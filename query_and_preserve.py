@@ -6,7 +6,7 @@ from seed_od import (
     SEED_NORMAL_PLACE_PAIRS,
     first_non_empty_trips,
 )
-from utils import random_boolean, random_phone, random_str, random_form_list
+from utils import random_boolean, random_consignee_phone_cn, random_str, random_form_list
 
 import logging
 import random
@@ -49,8 +49,13 @@ def query_and_preserve(headers):
     place_pair = (start, end)
 
     trip_id = random_form_list(trip_ids)
-    food_result = _query_food(
-        place_pair=place_pair, train_num=trip_id, headers=headers, trip_date=dep)
+    # 种子 trainfood 仅含高铁车次（如 D1345），普通车走 travel2 时不要查餐，避免无意义失败与脏数据
+    if high_speed:
+        food_result = _query_food(
+            place_pair=place_pair, train_num=trip_id, headers=headers, trip_date=dep)
+    else:
+        food_result = None
+
     contacts_result = _query_contacts(headers=headers)
 
     if not contacts_result:
@@ -59,7 +64,7 @@ def query_and_preserve(headers):
 
     base_preserve_payload = {
         "accountId": aq.current_user_id(),
-        "assurance": "0",
+        "assurance": 0,
         "contactsId": "",
         "date": dep,
         "from": start,
@@ -69,13 +74,13 @@ def query_and_preserve(headers):
 
     base_preserve_payload["tripId"] = trip_id
 
-    need_food = random_boolean()
+    need_food = random_boolean() if high_speed else False
     if need_food and food_result:
         logger.info("need food")
         food_dict = random_form_list(food_result)
         base_preserve_payload.update(food_dict)
     else:
-        base_preserve_payload["foodType"] = "0"
+        base_preserve_payload["foodType"] = 0
         if need_food and not food_result:
             logger.info("need food but API returned none; skip food extras")
         elif not need_food:
@@ -89,14 +94,14 @@ def query_and_preserve(headers):
     base_preserve_payload["contactsId"] = contacts_id
 
     # 高铁 2-3
-    seat_type = random_form_list(["2", "3"])
+    seat_type = random_form_list([2, 3])
     base_preserve_payload["seatType"] = seat_type
 
     need_consign = random_boolean()
     if need_consign:
         consign = {
             "consigneeName": random_str(),
-            "consigneePhone": random_phone(),
+            "consigneePhone": random_consignee_phone_cn(),
             "consigneeWeight": random.randint(1, 10),
             "handleDate": dep
         }

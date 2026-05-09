@@ -60,3 +60,8 @@ def random_str():
 
 def random_phone():
     return ''.join(random.choices(string.digits, k=random.randint(8, 15)))
+
+
+def random_consignee_phone_cn() -> str:
+    """11 位国内手机号样式，与常见校验/字段长度更一致（托运人电话）。"""
+    return "1" + "".join(random.choices(string.digits, k=10))

@@ -252,11 +252,21 @@ class Query:
         url = f"{self.address}/api/v1/foodservice/foods/{datestr}/{s}/{e}/{train_num}"
 
         response = self.session.get(url=url, headers=headers)
-        if response.status_code != 200 or response.json().get("data") is None:
+        try:
+            body = response.json()
+        except ValueError:
+            logger.warning(f"query food failed, non-JSON: {response.text}")
+            return None
+        if (
+            response.status_code != 200
+            or not isinstance(body, dict)
+            or body.get("status") != 1
+            or body.get("data") is None
+        ):
             logger.warning(
                 f"query food failed, response data is {response.text}")
             return None
-        _ = response.json().get("data")
+        _ = body.get("data")
 
         # food 是什么不会对后续调用链有影响，因此查询后返回一个固定数值
         return [{
@@ -544,7 +554,7 @@ class Query:
 
         base_preserve_payload = {
             "accountId": self.uid,
-            "assurance": "0",
+            "assurance": 0,
             "contactsId": "",
             "date": date,
             "from": start,
@@ -555,15 +565,21 @@ class Query:
         trip_id = random_from_list(trip_ids)
         base_preserve_payload["tripId"] = trip_id
 
-        need_food = random_boolean()
+        # 车上订餐种子数据仅覆盖高铁等车次；普通车不要查餐/带餐，避免与 tripId 不一致或 train-food 无数据
+        need_food = random_boolean() if is_high_speed else False
         if need_food:
             logger.info("need food")
-            food_result = self.query_food()
-            food_dict = random_from_list(food_result)
-            base_preserve_payload.update(food_dict)
+            food_result = self.query_food(
+                place_pair=(start, end), train_num=trip_id, headers=headers)
+            if food_result:
+                food_dict = random_from_list(food_result)
+                base_preserve_payload.update(food_dict)
+            else:
+                logger.info("need food but foodservice returned none; skip food extras")
+                base_preserve_payload["foodType"] = 0
         else:
             logger.info("not need food")
-            base_preserve_payload["foodType"] = "0"
+            base_preserve_payload["foodType"] = 0
 
         need_assurance = random_boolean()
         if need_assurance:
@@ -574,14 +590,14 @@ class Query:
         base_preserve_payload["contactsId"] = contacts_id
 
         # 高铁 2-3
-        seat_type = random_from_list(["2", "3"])
+        seat_type = random_from_list([2, 3])
         base_preserve_payload["seatType"] = seat_type
 
         need_consign = random_boolean()
         if need_consign:
             consign = {
                 "consigneeName": random_str(),
-                "consigneePhone": random_phone(),
+                "consigneePhone": random_consignee_phone_cn(),
                 "consigneeWeight": random.randint(1, 10),
                 "handleDate": date
             }

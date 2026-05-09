@@ -257,8 +257,14 @@ def _query_food(place_pair: tuple = ("shanghai", "suzhou"), train_num: str = "D1
 
     response = requests.get(url=url, headers=headers)
     body = _json_body(response)
+    if response.status_code != 200 or not isinstance(body, dict):
+        logger.warning(f"query food failed, response data is {response.text}")
+        return None
+    if body.get("status") != 1:
+        logger.warning(f"query food failed (status!=1), response data is {response.text}")
+        return None
     data = _unwrap_api_data(body)
-    if response.status_code != 200 or data is None:
+    if data is None:
         logger.warning(f"query food failed, response data is {response.text}")
         return None
 
