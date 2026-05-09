@@ -23,6 +23,37 @@ def _hdr(headers: Optional[dict]) -> dict:
     return headers if headers is not None else {}
 
 
+def _json_body(response: requests.Response):
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _unwrap_api_data(body):
+    """
+    Gateway may return {\"data\": ...} or, for some routes, a raw JSON array at top level.
+    """
+    if body is None:
+        return None
+    if isinstance(body, list):
+        return body
+    if isinstance(body, dict):
+        return body.get("data")
+    return None
+
+
+def _iter_records(data):
+    """Normalize single dict or list of dicts for iteration."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return [data]
+    return []
+
+
 def auth_headers(username="fdse_microservice", password="111111"):
     """Login and return headers with Bearer token, or None if login fails."""
     _, token = _login(username=username, password=password)
@@ -59,11 +90,14 @@ def _login(username="fdse_microservice", password="111111"):
     r = session.post(url=login_url, headers=headers, data=data, verify=False)
 
     if r.status_code == 200:
-        body = r.json().get("data")
-        if not body:
+        body = _json_body(r)
+        if not isinstance(body, dict):
             return None, None
-        uid = body.get("userId")
-        token = body.get("token")
+        inner = body.get("data")
+        if not inner or not isinstance(inner, dict):
+            return None, None
+        uid = inner.get("userId")
+        token = inner.get("token")
         if uid:
             uuid = uid
         return uid, token
@@ -90,14 +124,14 @@ def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), heade
 
     response = requests.post(url=url, headers=headers, json=payload)
 
-    if response.status_code != 200 or response.json().get("data") is None:
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    data = response.json().get("data")
-
     trip_ids = []
-    for d in data:
+    for d in _iter_records(data):
         trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
         trip_ids.append(trip_id)
     return trip_ids
@@ -117,14 +151,14 @@ def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers:
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code != 200 or response.json().get("data") is None:
-        logger.warning(f"request for {url} failed. response data is {response.json()}")
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
+        logger.warning(f"request for {url} failed. response data is {body}")
         return None
 
-    data = response.json().get("data")
-
     trip_ids = []
-    for d in data:
+    for d in _iter_records(data):
         trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
         trip_ids.append(trip_id)
     return trip_ids
@@ -145,14 +179,14 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou
 
     response = requests.post(url=url, headers=headers, json=payload)
 
-    if response.status_code != 200 or response.json().get("data") is None:
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    data = response.json().get("data")
-
     trip_ids = []
-    for d in data:
+    for d in _iter_records(data):
         trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
         trip_ids.append(trip_id)
     return trip_ids
@@ -174,14 +208,14 @@ def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), header
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code != 200 or response.json().get("data") is None:
-        logger.warning(f"request for {url} failed. response data is {response.json()}")
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
+        logger.warning(f"request for {url} failed. response data is {body}")
         return None
 
-    data = response.json().get("data")
-
     trip_ids = []
-    for d in data:
+    for d in _iter_records(data):
         trip_id = d.get("tripId")
         trip_ids.append(trip_id)
     return trip_ids
@@ -191,10 +225,11 @@ def _query_assurances(headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/assuranceservice/assurances/types"
     response = requests.get(url=url, headers=headers)
-    if response.status_code != 200 or response.json().get("data") is None:
-        logger.warning(f"query assurance failed, response data is {response.json()}")
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
+        logger.warning(f"query assurance failed, response data is {body}")
         return None
-    response.json().get("data")
 
     return [{"assurance": "1"}]
 
@@ -206,10 +241,11 @@ def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "
     url = f"{base_address}/api/v1/foodservice/foods/{day}/{place_pair[0]}/{place_pair[1]}/{train_num}"
 
     response = requests.get(url=url, headers=headers)
-    if response.status_code != 200 or response.json().get("data") is None:
-        logger.warning(f"query food failed, response data is {response}")
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
+        logger.warning(f"query food failed, response data is {response.text}")
         return None
-    response.json().get("data")
 
     return [{
         "foodName": "Soup",
@@ -225,13 +261,13 @@ def _query_contacts(headers: Optional[dict] = None) -> Optional[List[str]]:
     url = f"{base_address}/api/v1/contactservice/contacts/account/{uuid}"
 
     response = requests.get(url=url, headers=headers)
-    if response.status_code != 200 or response.json().get("data") is None:
-        logger.warning(f"query contacts failed, response data is {response.json()}")
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
+        logger.warning(f"query contacts failed, response data is {body}")
         return None
 
-    data = response.json().get("data")
-
-    ids = [d.get("id") for d in data if d.get("id") is not None]
+    ids = [d.get("id") for d in _iter_records(data) if d.get("id") is not None]
     return ids
 
 
@@ -248,13 +284,14 @@ def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), que
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code != 200 or response.json().get("data") is None:
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
         logger.warning(f"query orders failed, response data is {response.text}")
         return None
 
-    data = response.json().get("data")
     pairs = []
-    for d in data:
+    for d in _iter_records(data):
         if d.get("status") in types:
             order_id = d.get("id")
             trip_id = d.get("trainNumber")
@@ -277,13 +314,14 @@ def _query_orders_all_info(headers: Optional[dict] = None, query_other: bool = F
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code != 200 or response.json().get("data") is None:
+    body = _json_body(response)
+    data = _unwrap_api_data(body)
+    if response.status_code != 200 or data is None:
         logger.warning(f"query orders failed, response data is {response.text}")
         return None
 
-    data = response.json().get("data")
     pairs = []
-    for d in data:
+    for d in _iter_records(data):
         result = {}
         result["accountId"] = d.get("accountId")
         result["targetDate"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
@@ -505,7 +543,8 @@ def _query_admin_travel(headers):
     url = f"{base_address}/api/v1/admintravelservice/admintravel"
 
     r = requests.get(url=url, headers=headers)
-    if r.status_code == 200 and r.json().get("status") == 1:
+    body = _json_body(r)
+    if r.status_code == 200 and isinstance(body, dict) and body.get("status") == 1:
         print("success to query admin travel")
     else:
         print(f"faild to query admin travel with status_code: {r.status_code}")
