@@ -135,7 +135,7 @@ def query_and_preserve(headers):
                         json=base_preserve_payload)
 
     if res.status_code != 200:
-        logger.warning(
+        logger.debug(
             "preserve HTTP %s url=%s text=%s",
             res.status_code,
             PRESERVE_URL,
@@ -148,7 +148,7 @@ def query_and_preserve(headers):
     try:
         out = res.json()
     except ValueError:
-        logger.warning(
+        logger.debug(
             "preserve non-JSON url=%s raw=%s",
             PRESERVE_URL,
             (res.text or "")[:800],
@@ -158,7 +158,7 @@ def query_and_preserve(headers):
 
     tlog(f"preserve.response {out}", di)
     if out.get("data") != "Success":
-        logger.warning("preserve not success (common under concurrent load): %s", out)
+        logger.debug("preserve not success (common under concurrent load): %s", out)
         tlog(f"preserve.business_not_success {out!r}", di)
         return
 
