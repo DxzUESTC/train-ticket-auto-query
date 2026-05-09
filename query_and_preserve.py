@@ -6,7 +6,13 @@ from seed_od import (
     SEED_NORMAL_PLACE_PAIRS,
     first_non_empty_trips,
 )
-from utils import random_boolean, random_consignee_phone_cn, random_str, random_form_list
+from utils import (
+    env_truthy,
+    random_boolean,
+    random_consignee_phone_cn,
+    random_str,
+    random_form_list,
+)
 
 try:
     from traffic_log import detail_indent, tlog
@@ -29,7 +35,7 @@ def query_and_preserve(headers):
     """
     1. 查票（随机高铁或普通），OD 与上游 train-ticket 种子数据对齐
     2. 查保险、Food、Contacts
-    3. 随机选择Contacts、保险、是否买食物、是否托运
+    3. 随机选择Contacts、保险、是否买食物；托运默认关闭（TRAFFIC_ENABLE_CONSIGN=1 时随机开启）
     4. 买票
     :return:
     """
@@ -111,7 +117,7 @@ def query_and_preserve(headers):
     seat_type = random_form_list([2, 3])
     base_preserve_payload["seatType"] = seat_type
 
-    need_consign = random_boolean()
+    need_consign = env_truthy("TRAFFIC_ENABLE_CONSIGN", False) and random_boolean()
     if need_consign:
         consign = {
             "consigneeName": random_str(),

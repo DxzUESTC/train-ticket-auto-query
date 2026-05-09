@@ -1,6 +1,15 @@
+import os
 import random
 from typing import List, Tuple
 import string
+
+
+def env_truthy(name: str, default: bool = False) -> bool:
+    """环境变量为 1/true/yes/on（不区分大小写）时为 True；未设置则用 default。"""
+    v = os.environ.get(name)
+    if v is None or v.strip() == "":
+        return default
+    return v.strip().lower() in ("1", "true", "yes", "on")
 
 
 def normalize_route_station_name(name: str) -> str:

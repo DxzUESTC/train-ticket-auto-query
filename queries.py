@@ -593,7 +593,7 @@ class Query:
         seat_type = random_from_list([2, 3])
         base_preserve_payload["seatType"] = seat_type
 
-        need_consign = random_boolean()
+        need_consign = env_truthy("TRAFFIC_ENABLE_CONSIGN", False) and random_boolean()
         if need_consign:
             consign = {
                 "consigneeName": random_str(),
