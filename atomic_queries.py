@@ -1,5 +1,6 @@
 from typing import List, Optional
 import logging
+import threading
 import time
 import requests
 
@@ -10,8 +11,17 @@ logger = logging.getLogger("atomic_queries")
 
 base_address = BASE_URL
 
-# Set by _login() after successful authentication (used by order/contact endpoints).
+# Last successful login userId (single-threaded / default). Multi-threaded flows use _tls_user.
 uuid = ""
+_tls_user = threading.local()
+
+
+def current_user_id() -> str:
+    """userId for order/contact APIs: prefer thread-local (per-thread login), else module uuid."""
+    tid = getattr(_tls_user, "user_id", None)
+    if tid:
+        return tid
+    return uuid
 
 
 def _today() -> str:
@@ -99,6 +109,7 @@ def _login(username="fdse_microservice", password="111111"):
         token = inner.get("token")
         if uid:
             uuid = uid
+            _tls_user.user_id = uid
         return uid, token
 
     return None, None
@@ -262,7 +273,7 @@ def _query_food(place_pair: tuple = ("shanghai", "suzhou"), train_num: str = "D1
 
 def _query_contacts(headers: Optional[dict] = None) -> Optional[List[str]]:
     headers = _hdr(headers)
-    url = f"{base_address}/api/v1/contactservice/contacts/account/{uuid}"
+    url = f"{base_address}/api/v1/contactservice/contacts/account/{current_user_id()}"
 
     response = requests.get(url=url, headers=headers)
     body = _json_body(response)
@@ -284,7 +295,7 @@ def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), que
         url = f"{base_address}/api/v1/orderservice/order/refresh"
 
     payload = {
-        "loginId": uuid,
+        "loginId": current_user_id(),
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
@@ -314,7 +325,7 @@ def _query_orders_all_info(headers: Optional[dict] = None, query_other: bool = F
         url = f"{base_address}/api/v1/orderservice/order/refresh"
 
     payload = {
-        "loginId": uuid,
+        "loginId": current_user_id(),
     }
 
     response = requests.post(url=url, headers=headers, json=payload)

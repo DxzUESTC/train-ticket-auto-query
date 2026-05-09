@@ -11,6 +11,9 @@ Environment variables:
   TRAIN_TICKET_DATE   YYYY-MM-DD, or 'today' / 'tomorrow' (default: today).
   LOAD_THREADS        Worker threads in normal_request_manager.main_thread (default: 5).
                         Use 1 if you see concurrent preserve HTTP 500 from the gateway.
+  TRAIN_TICKET_ACCOUNTS_FILE  JSON list of {username, password, userId?}; default
+                        uestc_loadtest_accounts.json beside this package. Run
+                        register_uestc_loadtest_accounts.py once to create users and refresh userIds.
 """
 
 import os

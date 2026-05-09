@@ -58,7 +58,7 @@ def query_and_preserve(headers):
         return
 
     base_preserve_payload = {
-        "accountId": aq.uuid,
+        "accountId": aq.current_user_id(),
         "assurance": "0",
         "contactsId": "",
         "date": dep,

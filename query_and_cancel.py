@@ -21,7 +21,7 @@ def query_one_and_cancel(headers, uuid=None):
     # (orderId, tripId) pair
     pair = random_form_list(pairs)
 
-    uid = uuid if uuid is not None else aq.uuid
+    uid = uuid if uuid is not None else aq.current_user_id()
     order_id = _cancel_one_order(order_id=pair[0], uid=uid, headers=headers)
     if not order_id:
         return
