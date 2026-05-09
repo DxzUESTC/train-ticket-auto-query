@@ -13,7 +13,7 @@ Environment variables:
                         Use 1 if you see concurrent preserve HTTP 500 from the gateway.
   TRAIN_TICKET_ACCOUNTS_FILE  JSON list of {username, password, userId?}; default
                         uestc_loadtest_accounts.json beside this package. Run
-                        register_uestc_loadtest_accounts.py once to create users and refresh userIds.
+                        register_uestc_loadtest_accounts.py then seed_contacts_uestc_loadtest.py.
 """
 
 import os

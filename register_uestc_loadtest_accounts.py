@@ -124,6 +124,7 @@ def main() -> int:
         f.write("\n")
 
     print(f"Wrote {len(rows)} accounts to {OUTPUT_FILE}")
+    print("Next: python seed_contacts_uestc_loadtest.py")
     return 0
 
 

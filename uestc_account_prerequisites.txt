@@ -1,0 +1,22 @@
+UESTC 压测账号在 train-ticket 微服务里走完整「订票 / preserve」时的依赖（对照源码整理）
+
+1) 用户与登录（ts-user-service + ts-auth-service）
+   - 已注册账号；登录 POST /api/v1/users/login 拿到 JWT 与 userId（accountId）。
+   - 联系人、订单等接口在网关后需带 Authorization: Bearer <token>。
+
+2) 联系人（ts-contacts-service）— preserve 第 2 步
+   - POST /api/v1/contactservice/contacts，Body：accountId、name、documentType、documentNumber、phoneNumber。
+   - 表上有唯一约束 (account_id, document_number, document_type)，重复创建会失败。
+   - preserve 使用 contactsId 再 GET /api/v1/contactservice/contacts/{id} 取联系人写订单。
+
+3) 反黄牛 / 下单频控（ts-security-service）— preserve 第 1 步
+   - GET /api/v1/securityservice/securityConfigs/{accountId}
+   - 实现里用全局配置名 max_order_1_hour、max_order_not_use，再结合该 accountId 在 order / order-other 的订单统计；新账号订单数为 0 时一般直接通过，无需 per-user 安全配置行。
+
+4) 车次、线路、日期、余票（ts-travel-service / travel2、ts-basic-service、ts-seat-service 等）
+   - 与压测脚本中 OD、日期一致即可。
+
+5) 订餐（ts-food-service 等）
+   - 可选；链路易失败，脚本在订餐失败时会降级为不买 food。
+
+推荐准备顺序：register_uestc_loadtest_accounts.py → seed_contacts_uestc_loadtest.py → normal_request_manager.py
