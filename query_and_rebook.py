@@ -1,4 +1,5 @@
 from atomic_queries import _query_orders, _rebook_ticket, auth_headers
+from config import DEPARTURE_DATE
 
 import time
 
@@ -10,7 +11,7 @@ def query_and_rebook(headers):
         return
 
     new_trip_id = "D1345"
-    new_date = time.strftime("%Y-%m-%d", time.localtime())
+    new_date = DEPARTURE_DATE
     new_seat_type = "3"
 
     for pair in pairs:

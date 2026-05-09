@@ -1,12 +1,11 @@
 from atomic_queries import _query_advanced_ticket, auth_headers
+from config import DEPARTURE_DATE
 
 import logging
 import random
 import time
 
 logger = logging.getLogger("query_advanced_ticket")
-
-date = time.strftime("%Y-%m-%d", time.localtime())
 
 
 if __name__ == '__main__':
@@ -25,7 +24,7 @@ if __name__ == '__main__':
         print(f"search {type} between {place_pair[0]} to {place_pair[1]}")
         try:
             trip_ids = _query_advanced_ticket(
-                place_pair=place_pair, headers=headers, departure_time=date, type=type)
+                place_pair=place_pair, headers=headers, departure_time=DEPARTURE_DATE, type=type)
             print(f"get {len(trip_ids) if trip_ids else 0} routes.")
             print("*****************************INDEX:" + str(i))
         except Exception as e:

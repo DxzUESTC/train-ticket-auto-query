@@ -9,8 +9,13 @@ try:
 except ImportError:
     from utils import *
 
+try:
+    from .config import DEPARTURE_DATE
+except ImportError:
+    from config import DEPARTURE_DATE
+
 logger = logging.getLogger("auto-queries")
-datestr = time.strftime("%Y-%m-%d", time.localtime())
+datestr = DEPARTURE_DATE
 
 
 class Query:

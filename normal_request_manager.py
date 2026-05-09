@@ -5,6 +5,7 @@ from query_and_enter_station import query_and_enter_station
 from query_and_cancel import query_one_and_cancel
 
 from atomic_queries import _login, _query_orders, _query_high_speed_ticket
+from config import DEPARTURE_DATE
 
 from utils import random_boolean
 import time
@@ -49,6 +50,7 @@ def main_thread():
 
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"start:{start_time}")
+    print(f"departure date (TRAIN_TICKET_DATE / config): {DEPARTURE_DATE}")
 
     for i in range(5):
         t = Thread(name="thread" + str(i), target=main)
@@ -90,7 +92,7 @@ def query_tickets():
     else:
         raise SystemExit("login failed")
 
-    date = time.strftime("%Y-%m-%d", time.localtime())
+    date = DEPARTURE_DATE
 
     start = "Shang Hai"
     end = "Su Zhou"

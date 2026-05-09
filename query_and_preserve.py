@@ -1,6 +1,6 @@
 import atomic_queries as aq
 from atomic_queries import _query_high_speed_ticket, _query_normal_ticket, _query_assurances, _query_food, _query_contacts
-from config import BASE_URL
+from config import BASE_URL, DEPARTURE_DATE
 from utils import random_boolean, random_phone, random_str, random_form_list
 
 import logging
@@ -9,8 +9,6 @@ import requests
 import time
 
 logger = logging.getLogger("query_and_preserve")
-
-date = time.strftime("%Y-%m-%d", time.localtime())
 
 
 def query_and_preserve(headers):
@@ -26,29 +24,30 @@ def query_and_preserve(headers):
     trip_ids = []
     PRESERVE_URL = ""
 
+    dep = DEPARTURE_DATE
     high_speed = random_boolean()
     if high_speed:
         start = "Shang Hai"
         end = "Su Zhou"
         high_speed_place_pair = (start, end)
-        trip_ids = _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=date)
+        trip_ids = _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveservice/preserve"
     else:
         start = "Shang Hai"
         end = "Nan Jing"
         other_place_pair = (start, end)
-        trip_ids = _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=date)
+        trip_ids = _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveotherservice/preserveOther"
 
     if not trip_ids:
         logger.warning(
             "no trips for preserve path=%s-%s high_speed=%s date=%s; skip",
-            start, end, high_speed, date,
+            start, end, high_speed, dep,
         )
         return
 
     _ = _query_assurances(headers=headers)
-    food_result = _query_food(headers=headers, trip_date=date)
+    food_result = _query_food(headers=headers, trip_date=dep)
     contacts_result = _query_contacts(headers=headers)
 
     if not contacts_result:
@@ -59,7 +58,7 @@ def query_and_preserve(headers):
         "accountId": aq.uuid,
         "assurance": "0",
         "contactsId": "",
-        "date": date,
+        "date": dep,
         "from": start,
         "to": end,
         "tripId": ""
@@ -97,7 +96,7 @@ def query_and_preserve(headers):
             "consigneeName": random_str(),
             "consigneePhone": random_phone(),
             "consigneeWeight": random.randint(1, 10),
-            "handleDate": date
+            "handleDate": dep
         }
         base_preserve_payload.update(consign)
 

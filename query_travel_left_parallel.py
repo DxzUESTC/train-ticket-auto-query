@@ -1,18 +1,17 @@
 from atomic_queries import _query_high_speed_ticket_parallel, auth_headers
+from config import DEPARTURE_DATE
 
 import logging
 import time
 
 logger = logging.getLogger("query_travel_left_parallel")
 
-date = time.strftime("%Y-%m-%d", time.localtime())
-
 
 def query_travel_left_parallel(headers):
     start = "Su Zhou"
     end = "Shang Hai"
     high_speed_place_pair = (start, end)
-    _query_high_speed_ticket_parallel(place_pair=high_speed_place_pair, headers=headers, departure_time=date)
+    _query_high_speed_ticket_parallel(place_pair=high_speed_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
 
 
 if __name__ == '__main__':

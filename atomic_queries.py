@@ -12,8 +12,6 @@ base_address = BASE_URL
 # Set by _login() after successful authentication (used by order/contact endpoints).
 uuid = ""
 
-date = time.strftime("%Y-%m-%d", time.localtime())
-
 
 def _today() -> str:
     return time.strftime("%Y-%m-%d", time.localtime())

@@ -1,11 +1,10 @@
 from atomic_queries import _query_high_speed_ticket, _query_normal_ticket, auth_headers
+from config import DEPARTURE_DATE
 
 import logging
 import time
 
 logger = logging.getLogger("query_travel_left")
-
-date = time.strftime("%Y-%m-%d", time.localtime())
 
 
 def query_travel_left(headers):
@@ -18,12 +17,12 @@ def query_travel_left(headers):
         start = "Shang Hai"
         end = "Su Zhou"
         high_speed_place_pair = (start, end)
-        _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=date)
+        _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
     else:
         start = "Shang Hai"
         end = "Nan Jing"
         other_place_pair = (start, end)
-        _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=date)
+        _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
 
 
 if __name__ == '__main__':
