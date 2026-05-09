@@ -13,7 +13,7 @@ from query_and_collect_ticket import query_and_collect_ticket
 from query_and_enter_station import query_and_enter_station
 from query_and_cancel import query_one_and_cancel
 
-from atomic_queries import _login, _query_orders, _query_high_speed_ticket
+from atomic_queries import _login, _query_orders, _query_high_speed_ticket, bind_thread_user
 from config import DEPARTURE_DATE
 from seed_od import SEED_HIGH_SPEED_PLACE_PAIRS, first_non_empty_trips
 
@@ -58,13 +58,26 @@ def run_one_traffic_iteration(account: dict, headers: dict, per_account_idx: int
     now_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"now_time:{now_time} user={un}")
 
-    if per_account_idx % 20 == 0:
+    if per_account_idx % 20 == 0 or not headers.get("Authorization"):
         uid, token = _login(username=un, password=pw)
         if uid is not None and token is not None:
             headers["Authorization"] = "Bearer " + token
+            account["userId"] = uid
         else:
             print(f"login failed user={un}, skipping iteration")
             return
+
+    uid_tls = account.get("userId")
+    if not uid_tls:
+        uid, token = _login(username=un, password=pw)
+        if uid is None or token is None:
+            print(f"login failed user={un} (no userId in account file), skipping iteration")
+            return
+        headers["Authorization"] = "Bearer " + token
+        account["userId"] = uid
+        uid_tls = uid
+
+    bind_thread_user(uid_tls)
 
     print(f"idx:{per_account_idx} user={un}")
     query_and_preserve(headers)

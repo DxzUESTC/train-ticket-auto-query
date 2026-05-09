@@ -24,6 +24,18 @@ def current_user_id() -> str:
     return uuid
 
 
+def bind_thread_user(user_id: str) -> None:
+    """
+    将当前线程的「逻辑用户」设为 user_id（与 Authorization Bearer 属主一致）。
+
+    线程池轮流处理多账号时，若只在部分迭代调用 _login，线程局部 user_id 可能仍是
+    上一账号，导致 accountId / loginId 与 JWT 不一致，进而 preserve / 订单接口异常或 500。
+    在每次发起业务请求前对当前账号调用本函数即可。
+    """
+    if user_id:
+        _tls_user.user_id = user_id
+
+
 def _today() -> str:
     return time.strftime("%Y-%m-%d", time.localtime())
 
