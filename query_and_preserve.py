@@ -40,9 +40,20 @@ def query_and_preserve(headers):
         trip_ids = _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=date)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveotherservice/preserveOther"
 
+    if not trip_ids:
+        logger.warning(
+            "no trips for preserve path=%s-%s high_speed=%s date=%s; skip",
+            start, end, high_speed, date,
+        )
+        return
+
     _ = _query_assurances(headers=headers)
     food_result = _query_food(headers=headers, trip_date=date)
     contacts_result = _query_contacts(headers=headers)
+
+    if not contacts_result:
+        logger.warning("no contacts for account; skip preserve")
+        return
 
     base_preserve_payload = {
         "accountId": aq.uuid,
@@ -58,13 +69,16 @@ def query_and_preserve(headers):
     base_preserve_payload["tripId"] = trip_id
 
     need_food = random_boolean()
-    if need_food:
+    if need_food and food_result:
         logger.info("need food")
         food_dict = random_form_list(food_result)
         base_preserve_payload.update(food_dict)
     else:
-        logger.info("not need food")
         base_preserve_payload["foodType"] = "0"
+        if need_food and not food_result:
+            logger.info("need food but API returned none; skip food extras")
+        elif not need_food:
+            logger.info("not need food")
 
     need_assurance = random_boolean()
     if need_assurance:
@@ -118,4 +132,3 @@ if __name__ == '__main__':
 
     end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"start:{start_time} end:{end_time}")
-    end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())

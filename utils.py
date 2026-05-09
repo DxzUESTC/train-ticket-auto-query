@@ -8,6 +8,8 @@ def random_boolean() -> bool:
 
 
 def random_from_list(l: List):
+    if not l:
+        raise ValueError("random_from_list: empty sequence")
     return random.choice(l)
 
 
