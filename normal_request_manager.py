@@ -92,6 +92,11 @@ def run_one_traffic_iteration(
         pairs = _query_orders(headers=headers, types=tuple([0, 1]))
         pairs2 = _query_orders(headers=headers, types=tuple([0, 1]), query_other=True)
         unpaid = (pairs or []) + (pairs2 or [])
+        tlog(
+            f"unpaid pool size={len(unpaid)}（pay/cancel 只随机抽其中 1 条；"
+            f"若上一步 preserve 为 500 则无新单，pay 的往往是更早留下的未支付单）",
+            1,
+        )
 
         if random_boolean() and random_boolean():
             tlog("branch cancel random", 1)

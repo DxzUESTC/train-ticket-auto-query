@@ -3,6 +3,15 @@ import time
 from atomic_queries import _query_orders, _pay_one_order, auth_headers
 from utils import random_form_list
 
+try:
+    from traffic_log import detail_indent, tlog
+except ImportError:
+    def tlog(msg: str, indent: int = 0) -> None:
+        print(f"{'  ' * indent}{msg}")
+
+    def detail_indent() -> int:
+        return 0
+
 
 def query_order_and_pay(headers, pairs):
     """
@@ -15,6 +24,10 @@ def query_order_and_pay(headers, pairs):
 
     # (orderId, tripId) pair
     pair = random_form_list(pairs)
+    tlog(
+        f"pay.pick among {len(pairs)} unpaid → order_id={pair[0]} trip_id={pair[1]}",
+        detail_indent(),
+    )
 
     order_id = _pay_one_order(pair[0], pair[1], headers=headers)
     if not order_id:
