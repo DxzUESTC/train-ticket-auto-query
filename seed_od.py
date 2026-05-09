@@ -40,7 +40,12 @@ def first_non_empty_trips(
     headers: dict,
     departure_time: str,
 ) -> Tuple[Optional[Tuple[str, str]], Optional[list]]:
-    """Try each seed pair until query_fn returns a non-empty list."""
+    """Try each seed pair until query_fn returns a non-empty list.
+
+    Returns (place_pair, trip_ids). On failure returns (None, None) — unpack as
+    ``pair, trip_ids = ...`` then check ``if not pair or not trip_ids`` (do not
+    unpack pair into (start, end) when pair may be None).
+    """
     for pair in pairs:
         trip_ids = query_fn(place_pair=pair, headers=headers, departure_time=departure_time)
         if trip_ids:

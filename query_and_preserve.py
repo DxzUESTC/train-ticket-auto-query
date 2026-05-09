@@ -28,15 +28,15 @@ def query_and_preserve(headers):
     high_speed = random_boolean()
 
     if high_speed:
-        (start, end), trip_ids = first_non_empty_trips(
+        pair, trip_ids = first_non_empty_trips(
             _query_high_speed_ticket, SEED_HIGH_SPEED_PLACE_PAIRS, headers, dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveservice/preserve"
     else:
-        (start, end), trip_ids = first_non_empty_trips(
+        pair, trip_ids = first_non_empty_trips(
             _query_normal_ticket, SEED_NORMAL_PLACE_PAIRS, headers, dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveotherservice/preserveOther"
 
-    if not trip_ids:
+    if not pair or not trip_ids:
         logger.warning(
             "no trips for preserve high_speed=%s date=%s tried_pairs=%s; skip",
             high_speed, dep,
@@ -44,6 +44,7 @@ def query_and_preserve(headers):
         )
         return
 
+    start, end = pair
     _ = _query_assurances(headers=headers)
     place_pair = (start, end)
 
