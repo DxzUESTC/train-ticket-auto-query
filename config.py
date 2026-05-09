@@ -9,8 +9,10 @@ backend; use 'today' or an explicit future YYYY-MM-DD.
 Environment variables:
   TRAIN_TICKET_BASE   Gateway root URL (default: lab NodePort below).
   TRAIN_TICKET_DATE   YYYY-MM-DD, or 'today' / 'tomorrow' (default: today).
-  LOAD_THREADS        Worker threads in normal_request_manager.main_thread (default: 5).
+  LOAD_THREADS        Max concurrent workers in normal_request_manager (default: 5).
                         Use 1 if you see concurrent preserve HTTP 500 from the gateway.
+  TRAFFIC_INNER_ITERATIONS  Total business iterations (preserve + orders path) to run
+                        across the pool (default: LOAD_THREADS * 30).
   TRAIN_TICKET_ACCOUNTS_FILE  JSON list of {username, password, userId?}; default
                         uestc_loadtest_accounts.json beside this package. Run
                         register_uestc_loadtest_accounts.py then seed_contacts_uestc_loadtest.py.
