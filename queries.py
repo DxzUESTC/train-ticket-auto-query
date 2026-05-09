@@ -104,7 +104,7 @@ class Query:
 
         payload = {
             "departureTime": time,
-            "startingPlace": place_pair[0],
+            "startPlace": place_pair[0],
             "endPlace": place_pair[1],
         }
 
@@ -137,7 +137,7 @@ class Query:
 
         payload = {
             "departureTime": time,
-            "startingPlace": place_pair[0],
+            "startPlace": place_pair[0],
             "endPlace": place_pair[1],
         }
 
@@ -177,7 +177,7 @@ class Query:
 
         payload = {
             "departureTime": time,
-            "startingPlace": place_pair[0],
+            "startPlace": place_pair[0],
             "endPlace": place_pair[1],
         }
 
@@ -215,7 +215,7 @@ class Query:
 
         payload = {
             "departureTime": date,
-            "startingPlace": place_pair[0],
+            "startPlace": place_pair[0],
             "endPlace": place_pair[1],
         }
 

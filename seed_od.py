@@ -6,7 +6,7 @@ References (repo train-ticket):
 - ts-travel2-service/.../travel2/init/InitData.java — Z/T/K trips: e.g. shanghai, nanjing.
 
 Use the same strings as Route.stations in ts-route-service / admin Route List (lowercase, no spaces).
-TravelServiceImpl matches startingPlace/endPlace with route.getStations().indexOf(...); display
+TravelServiceImpl matches start/end with route.getStations().indexOf(...); display
 names from ts-station-service (e.g. \"Shang Hai\") will NOT match unless normalized — see
 utils.normalize_route_station_name and atomic_queries payload handling.
 """
@@ -15,13 +15,13 @@ from typing import Callable, List, Optional, Tuple
 
 from utils import normalize_place_pair
 
-# (startingPlace, endPlace) for POST .../travelservice/trips/left
+# (startPlace, endPlace) semantics for POST .../travelservice/trips/left (JSON keys: startPlace, endPlace)
 SEED_HIGH_SPEED_PLACE_PAIRS: List[Tuple[str, str]] = [
     ("shanghai", "suzhou"),
     ("suzhou", "shanghai"),
 ]
 
-# (startingPlace, endPlace) for POST .../travel2service/trips/left
+# Same for POST .../travel2service/trips/left (TripInfo in ts-common)
 SEED_NORMAL_PLACE_PAIRS: List[Tuple[str, str]] = [
     ("shanghai", "nanjing"),
     ("nanjing", "shanghai"),

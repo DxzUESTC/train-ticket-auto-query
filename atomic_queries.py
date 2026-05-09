@@ -118,7 +118,7 @@ def _query_high_speed_ticket(place_pair: tuple = ("shanghai", "suzhou"), headers
 
     payload = {
         "departureTime": dep,
-        "startingPlace": start,
+        "startPlace": start,
         "endPlace": end,
     }
 
@@ -147,7 +147,7 @@ def _query_normal_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: O
 
     payload = {
         "departureTime": dep,
-        "startingPlace": start,
+        "startPlace": start,
         "endPlace": end,
     }
 
@@ -175,7 +175,7 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("shanghai", "suzhou")
 
     payload = {
         "departureTime": dep,
-        "startingPlace": start,
+        "startPlace": start,
         "endPlace": end,
     }
 
@@ -206,7 +206,7 @@ def _query_advanced_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers:
 
     payload = {
         "departureTime": dep,
-        "startingPlace": start,
+        "startPlace": start,
         "endPlace": end,
     }
 
@@ -450,7 +450,7 @@ def _query_cheapest(travel_date: Optional[str] = None, headers: Optional[dict] =
     payload = {
         "departureTime": dep,
         "endPlace": "shanghai",
-        "startingPlace": "nanjing",
+        "startPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)
@@ -468,7 +468,7 @@ def _query_min_station(travel_date: Optional[str] = None, headers: Optional[dict
     payload = {
         "departureTime": dep,
         "endPlace": "shanghai",
-        "startingPlace": "nanjing",
+        "startPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)
@@ -486,7 +486,7 @@ def _query_quickest(travel_date: Optional[str] = None, headers: Optional[dict] =
     payload = {
         "departureTime": dep,
         "endPlace": "shanghai",
-        "startingPlace": "nanjing",
+        "startPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)
