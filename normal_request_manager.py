@@ -92,6 +92,18 @@ def main_thread():
     )
     print(f"accounts file: {os.environ.get('TRAIN_TICKET_ACCOUNTS_FILE', _DEFAULT_ACCOUNTS_FILE)}")
 
+    n_acc = len(accounts)
+    if LOAD_THREADS > n_acc:
+        print(
+            f"WARN: LOAD_THREADS({LOAD_THREADS}) > 账号数({n_acc})，将有多条线程共用同一账号 "
+            f"(i % {n_acc})。若要「一线程一账号且不重复」，请设 LOAD_THREADS<={n_acc}。"
+        )
+    else:
+        print(
+            f"线程与账号: 共 {LOAD_THREADS} 条线程，各绑定 accounts[0..{LOAD_THREADS - 1}]，"
+            f"互不切换用户（日志里 user= 应每条线程固定一个）。"
+        )
+
     for i in range(LOAD_THREADS):
         acc = accounts[i % len(accounts)]
         t = Thread(name="thread" + str(i), target=make_main(acc))
