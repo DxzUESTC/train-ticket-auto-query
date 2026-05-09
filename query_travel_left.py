@@ -1,5 +1,10 @@
 from atomic_queries import _query_high_speed_ticket, _query_normal_ticket, auth_headers
 from config import DEPARTURE_DATE
+from seed_od import (
+    SEED_HIGH_SPEED_PLACE_PAIRS,
+    SEED_NORMAL_PLACE_PAIRS,
+    first_non_empty_trips,
+)
 
 import logging
 import time
@@ -8,21 +13,18 @@ logger = logging.getLogger("query_travel_left")
 
 
 def query_travel_left(headers):
-    """
-    1. 查票（随机高铁或普通）
-    :return:
-    """
+    dep = DEPARTURE_DATE
     high_speed = False
     if high_speed:
-        start = "Shang Hai"
-        end = "Su Zhou"
-        high_speed_place_pair = (start, end)
-        _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
+        _, trip_ids = first_non_empty_trips(
+            _query_high_speed_ticket, SEED_HIGH_SPEED_PLACE_PAIRS, headers, dep)
+        if not trip_ids:
+            logger.warning("no high-speed trips for seed pairs")
     else:
-        start = "Shang Hai"
-        end = "Nan Jing"
-        other_place_pair = (start, end)
-        _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
+        _, trip_ids = first_non_empty_trips(
+            _query_normal_ticket, SEED_NORMAL_PLACE_PAIRS, headers, dep)
+        if not trip_ids:
+            logger.warning("no normal trips for seed pairs")
 
 
 if __name__ == '__main__':

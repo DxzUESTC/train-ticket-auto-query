@@ -11,8 +11,18 @@ except ImportError:
 
 try:
     from .config import DEPARTURE_DATE
+    from .seed_od import (
+        SEED_HIGH_SPEED_PLACE_PAIRS,
+        SEED_NORMAL_PLACE_PAIRS,
+        SEED_PLACE_PAIRS_ALL,
+    )
 except ImportError:
     from config import DEPARTURE_DATE
+    from seed_od import (
+        SEED_HIGH_SPEED_PLACE_PAIRS,
+        SEED_NORMAL_PLACE_PAIRS,
+        SEED_PLACE_PAIRS_ALL,
+    )
 
 logger = logging.getLogger("auto-queries")
 datestr = DEPARTURE_DATE
@@ -83,9 +93,7 @@ class Query:
         """
 
         url = f"{self.address}/api/v1/travelservice/trips/left"
-        place_pairs = [("Shang Hai", "Su Zhou"),
-                       ("Su Zhou", "Shang Hai"),
-                       ("Nan Jing", "Shang Hai")]
+        place_pairs = list(SEED_HIGH_SPEED_PLACE_PAIRS)
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
@@ -117,8 +125,7 @@ class Query:
 
     def query_normal_ticket(self, place_pair: tuple = (), time: str = "", headers: dict = {}) -> List[str]:
         url = f"{self.address}/api/v1/travel2service/trips/left"
-        place_pairs = [("Shang Hai", "Nan Jing"),
-                       ("Nan Jing", "Shang Hai")]
+        place_pairs = list(SEED_NORMAL_PLACE_PAIRS)
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
@@ -157,9 +164,7 @@ class Query:
         """
 
         url = f"{self.address}/api/v1/travelservice/trips/left_parallel"
-        place_pairs = [("Shang Hai", "Su Zhou"),
-                       ("Su Zhou", "Shang Hai"),
-                       ("Nan Jing", "Shang Hai")]
+        place_pairs = list(SEED_HIGH_SPEED_PLACE_PAIRS)
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
@@ -196,9 +201,7 @@ class Query:
         """
 
         url = f"{self.address}/api/v1/travelplanservice/travelPlan/{type}"
-        place_pairs = [("Shang Hai", "Su Zhou"),
-                       ("Su Zhou", "Shang Hai"),
-                       ("Nan Jing", "Shang Hai")]
+        place_pairs = list(SEED_PLACE_PAIRS_ALL)
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
@@ -241,7 +244,7 @@ class Query:
         return [{"assurance": "1"}]
 
     def query_food(self, place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "D1345", headers: dict = {}):
-        url = f"{self.address}/api/v1/foodservice/foods/2021-07-14/{place_pair[0]}/{place_pair[1]}/{train_num}"
+        url = f"{self.address}/api/v1/foodservice/foods/{datestr}/{place_pair[0]}/{place_pair[1]}/{train_num}"
 
         response = self.session.get(url=url, headers=headers)
         if response.status_code != 200 or response.json().get("data") is None:

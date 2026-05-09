@@ -1,6 +1,11 @@
 import atomic_queries as aq
 from atomic_queries import _query_high_speed_ticket, _query_normal_ticket, _query_assurances, _query_food, _query_contacts
 from config import BASE_URL, DEPARTURE_DATE
+from seed_od import (
+    SEED_HIGH_SPEED_PLACE_PAIRS,
+    SEED_NORMAL_PLACE_PAIRS,
+    first_non_empty_trips,
+)
 from utils import random_boolean, random_phone, random_str, random_form_list
 
 import logging
@@ -13,41 +18,38 @@ logger = logging.getLogger("query_and_preserve")
 
 def query_and_preserve(headers):
     """
-    1. 查票（随机高铁或普通）
+    1. 查票（随机高铁或普通），OD 与上游 train-ticket 种子数据对齐
     2. 查保险、Food、Contacts
     3. 随机选择Contacts、保险、是否买食物、是否托运
     4. 买票
     :return:
     """
-    start = ""
-    end = ""
-    trip_ids = []
-    PRESERVE_URL = ""
-
     dep = DEPARTURE_DATE
     high_speed = random_boolean()
+
     if high_speed:
-        start = "Shang Hai"
-        end = "Su Zhou"
-        high_speed_place_pair = (start, end)
-        trip_ids = _query_high_speed_ticket(place_pair=high_speed_place_pair, headers=headers, departure_time=dep)
+        (start, end), trip_ids = first_non_empty_trips(
+            _query_high_speed_ticket, SEED_HIGH_SPEED_PLACE_PAIRS, headers, dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveservice/preserve"
     else:
-        start = "Shang Hai"
-        end = "Nan Jing"
-        other_place_pair = (start, end)
-        trip_ids = _query_normal_ticket(place_pair=other_place_pair, headers=headers, departure_time=dep)
+        (start, end), trip_ids = first_non_empty_trips(
+            _query_normal_ticket, SEED_NORMAL_PLACE_PAIRS, headers, dep)
         PRESERVE_URL = f"{BASE_URL}/api/v1/preserveotherservice/preserveOther"
 
     if not trip_ids:
         logger.warning(
-            "no trips for preserve path=%s-%s high_speed=%s date=%s; skip",
-            start, end, high_speed, dep,
+            "no trips for preserve high_speed=%s date=%s tried_pairs=%s; skip",
+            high_speed, dep,
+            SEED_HIGH_SPEED_PLACE_PAIRS if high_speed else SEED_NORMAL_PLACE_PAIRS,
         )
         return
 
     _ = _query_assurances(headers=headers)
-    food_result = _query_food(headers=headers, trip_date=dep)
+    place_pair = (start, end)
+
+    trip_id = random_form_list(trip_ids)
+    food_result = _query_food(
+        place_pair=place_pair, train_num=trip_id, headers=headers, trip_date=dep)
     contacts_result = _query_contacts(headers=headers)
 
     if not contacts_result:
@@ -64,7 +66,6 @@ def query_and_preserve(headers):
         "tripId": ""
     }
 
-    trip_id = random_form_list(trip_ids)
     base_preserve_payload["tripId"] = trip_id
 
     need_food = random_boolean()

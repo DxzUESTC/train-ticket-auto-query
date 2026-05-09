@@ -1,5 +1,6 @@
 from atomic_queries import _query_high_speed_ticket_parallel, auth_headers
 from config import DEPARTURE_DATE
+from seed_od import SEED_HIGH_SPEED_PLACE_PAIRS, first_non_empty_trips
 
 import logging
 import time
@@ -8,10 +9,11 @@ logger = logging.getLogger("query_travel_left_parallel")
 
 
 def query_travel_left_parallel(headers):
-    start = "Su Zhou"
-    end = "Shang Hai"
-    high_speed_place_pair = (start, end)
-    _query_high_speed_ticket_parallel(place_pair=high_speed_place_pair, headers=headers, departure_time=DEPARTURE_DATE)
+    dep = DEPARTURE_DATE
+    _, trip_ids = first_non_empty_trips(
+        _query_high_speed_ticket_parallel, SEED_HIGH_SPEED_PLACE_PAIRS, headers, dep)
+    if not trip_ids:
+        logger.warning("no parallel high-speed trips for seed pairs")
 
 
 if __name__ == '__main__':

@@ -1,5 +1,6 @@
 from atomic_queries import _query_advanced_ticket, auth_headers
 from config import DEPARTURE_DATE
+from seed_od import SEED_PLACE_PAIRS_ALL
 
 import logging
 import random
@@ -15,9 +16,7 @@ if __name__ == '__main__':
 
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
-    place_pairs = [("Shang Hai", "Su Zhou"),
-                   ("Su Zhou", "Shang Hai"),
-                   ("Nan Jing", "Shang Hai")]
+    place_pairs = list(SEED_PLACE_PAIRS_ALL)
     type = "quickest"
     for i in range(200):
         place_pair = random.choice(place_pairs)

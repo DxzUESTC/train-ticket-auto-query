@@ -6,6 +6,7 @@ from query_and_cancel import query_one_and_cancel
 
 from atomic_queries import _login, _query_orders, _query_high_speed_ticket
 from config import DEPARTURE_DATE
+from seed_od import SEED_HIGH_SPEED_PLACE_PAIRS, first_non_empty_trips
 
 from utils import random_boolean
 import time
@@ -94,17 +95,13 @@ def query_tickets():
 
     date = DEPARTURE_DATE
 
-    start = "Shang Hai"
-    end = "Su Zhou"
-    high_speed_place_pair = (start, end)
-
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"start:{start_time}")
 
     for i in range(50):
-        trip_ids = _query_high_speed_ticket(
-            place_pair=high_speed_place_pair, headers=headers, departure_time=date)
-        print(trip_ids)
+        pair, trip_ids = first_non_empty_trips(
+            _query_high_speed_ticket, SEED_HIGH_SPEED_PLACE_PAIRS, headers, date)
+        print(pair, trip_ids)
 
     end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"start:{start_time} end:{end_time}")
