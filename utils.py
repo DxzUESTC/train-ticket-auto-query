@@ -11,6 +11,11 @@ def random_from_list(l: List):
     return random.choice(l)
 
 
+def random_form_list(l: List):
+    """Alias used by scenario scripts (same as random_from_list)."""
+    return random_from_list(l)
+
+
 def random_from_weighted(d: dict):
     """
     :param d: 带相对权重的字典，eg. {'a': 100, 'b': 50}

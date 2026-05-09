@@ -1,5 +1,9 @@
-from .queries import Query
-from .utils import *
+try:
+    from .queries import Query
+    from .utils import *
+except ImportError:
+    from queries import Query
+    from utils import *
 import logging
 
 logger = logging.getLogger("autoquery-scenario")

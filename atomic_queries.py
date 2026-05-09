@@ -1,54 +1,71 @@
-from typing import List
-import requests
+from typing import List, Optional
 import logging
 import time
+import requests
+
+from config import BASE_URL
 
 logger = logging.getLogger("atomic_queries")
-base_address = "http://139.196.152.44:31000"
 
-headers = {
-    "Cookie": "JSESSIONID=CAF07ABCB2031807D1C6043730C69F17; YsbCaptcha=ABF26F4AE563405894B1540057F62E7B",
-    "Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmZHNlX21pY3Jvc2VydmljZSIsInJvbGVzIjpbIlJPTEVfVVNFUiJdLCJpZCI6IjRkMmE0NmM3LTcxY2ItNGNmMS1iNWJiLWI2ODQwNmQ5ZGE2ZiIsImlhdCI6MTYyNjM0NDgyNSwiZXhwIjoxNjI2MzQ4NDI1fQ.4eOMmQDhnq-Hjj1DuiH8duT6rXkP0QfeTnaXwvYGKD4",
-    "Content-Type": "application/json",
-    "Connection": "close"
-}
+base_address = BASE_URL
 
-# The UUID of fdse_microservice is that
-uuid = "4d2a46c7-71cb-4cf1-b5bb-b68406d9da6f"
+# Set by _login() after successful authentication (used by order/contact endpoints).
+uuid = ""
 
 date = time.strftime("%Y-%m-%d", time.localtime())
 
 
+def _today() -> str:
+    return time.strftime("%Y-%m-%d", time.localtime())
+
+
+def _hdr(headers: Optional[dict]) -> dict:
+    return headers if headers is not None else {}
+
+
+def auth_headers(username="fdse_microservice", password="111111"):
+    """Login and return headers with Bearer token, or None if login fails."""
+    _, token = _login(username=username, password=password)
+    if not token:
+        return None
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+
+
 def _login(username="fdse_microservice", password="111111"):
-    url = f"{base_address}/api/v1/users/login"
-
-    cookies = {
-        'JSESSIONID': '9ED5635A2A892A4BA31E7E98533A279D',
-        'YsbCaptcha': '025080CF8BA94594B09E283F17815444',
-    }
-
-    headers = {
-        'Proxy-Connection': 'keep-alive',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
+    global uuid
+    session = requests.Session()
+    session.headers.update({
+        'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
         'Content-Type': 'application/json',
-        'Origin': url,
-        'Referer': f"{base_address}/client_login.html",
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Connection': 'close'
+        'Connection': 'keep-alive',
+    })
+
+    base = base_address.rstrip("/")
+    verify_url = f"{base}/api/v1/verifycode/generate"
+    login_url = f"{base}/api/v1/users/login"
+
+    session.get(url=verify_url, verify=False)
+
+    headers = {
+        'Origin': login_url,
+        'Referer': f"{base}/client_login.html",
     }
 
-    data = '{"username":"' + username + '","password":"' + password + '"}'
+    data = '{"username":"' + username + '","password":"' + password + '","verificationCode":"1234"}'
 
-    r = requests.post(url=url, headers=headers,
-                      cookies=cookies, data=data, verify=False)
+    r = session.post(url=login_url, headers=headers, data=data, verify=False)
 
     if r.status_code == 200:
-        data = r.json().get("data")
-        uid = data.get("userId")
-        token = data.get("token")
-
+        body = r.json().get("data")
+        if not body:
+            return None, None
+        uid = body.get("userId")
+        token = body.get("token")
+        if uid:
+            uuid = uid
         return uid, token
 
     return None, None
@@ -58,35 +75,26 @@ def admin_login():
     return _login
 
 
-def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: dict = {},
-                             time: str = "2021-07-15") -> List[str]:
-    """
-    返回TripId 列表
-    :param place_pair: 使用的开始结束组对
-    :param headers: 请求头
-    :return: TripId 列表
-    """
+def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: Optional[dict] = None,
+                             departure_time: Optional[str] = None) -> Optional[List[str]]:
+    headers = _hdr(headers)
+    dep = departure_time if departure_time is not None else _today()
 
     url = f"{base_address}/api/v1/travelservice/trips/left"
-    place_pairs = [("Shang Hai", "Su Zhou"),
-                   ("Su Zhou", "Shang Hai"),
-                   ("Nan Jing", "Shang Hai")]
 
     payload = {
-        "departureTime": time,
+        "departureTime": dep,
         "startingPlace": place_pair[0],
         "endPlace": place_pair[1],
     }
 
-    response = requests.post(url=url,
-                             headers=headers,
-                             json=payload)
+    response = requests.post(url=url, headers=headers, json=payload)
 
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    data = response.json().get("data")  # type: dict
+    data = response.json().get("data")
 
     trip_ids = []
     for d in data:
@@ -95,26 +103,25 @@ def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), heade
     return trip_ids
 
 
-def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: dict = {},
-                         time: str = "2021-07-15") -> List[str]:
+def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: Optional[dict] = None,
+                         departure_time: Optional[str] = None) -> Optional[List[str]]:
+    headers = _hdr(headers)
+    dep = departure_time if departure_time is not None else _today()
+
     url = f"{base_address}/api/v1/travel2service/trips/left"
-    place_pairs = [("Shang Hai", "Nan Jing"),
-                   ("Nan Jing", "Shang Hai")]
 
     payload = {
-        "departureTime": time,
+        "departureTime": dep,
         "startingPlace": place_pair[0],
         "endPlace": place_pair[1],
     }
 
-    response = requests.post(url=url,
-                             headers=headers,
-                             json=payload)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    response = requests.post(url=url, headers=headers, json=payload)
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"request for {url} failed. response data is {response.json()}")
         return None
 
-    data = response.json().get("data")  # type: dict
+    data = response.json().get("data")
 
     trip_ids = []
     for d in data:
@@ -123,35 +130,26 @@ def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers:
     return trip_ids
 
 
-def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: dict = {},
-                                      time: str = "2021-07-15") -> List[str]:
-    """
-    返回TripId 列表
-    :param place_pair: 使用的开始结束组对
-    :param headers: 请求头
-    :return: TripId 列表
-    """
+def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: Optional[dict] = None,
+                                      departure_time: Optional[str] = None) -> Optional[List[str]]:
+    headers = _hdr(headers)
+    dep = departure_time if departure_time is not None else _today()
 
     url = f"{base_address}/api/v1/travelservice/trips/left_parallel"
-    place_pairs = [("Shang Hai", "Su Zhou"),
-                   ("Su Zhou", "Shang Hai"),
-                   ("Nan Jing", "Shang Hai")]
 
     payload = {
-        "departureTime": time,
+        "departureTime": dep,
         "startingPlace": place_pair[0],
         "endPlace": place_pair[1],
     }
 
-    response = requests.post(url=url,
-                             headers=headers,
-                             json=payload)
+    response = requests.post(url=url, headers=headers, json=payload)
 
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    data = response.json().get("data")  # type: dict
+    data = response.json().get("data")
 
     trip_ids = []
     for d in data:
@@ -160,24 +158,23 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou
     return trip_ids
 
 
-def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: dict = {}, time: str = "2021-07-15",
-                           type: str = "cheapest") -> List[str]:
+def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: Optional[dict] = None,
+                           departure_time: Optional[str] = None,
+                           type: str = "cheapest") -> Optional[List[str]]:
+    headers = _hdr(headers)
+    dep = departure_time if departure_time is not None else _today()
+
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/" + type
     print(url)
 
     payload = {
-        "departureTime": time,
+        "departureTime": dep,
         "startingPlace": place_pair[0],
         "endPlace": place_pair[1],
     }
 
-    # print(payload)
-
-    response = requests.post(url=url,
-                             headers=headers,
-                             json=payload)
-    # print(response.text)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    response = requests.post(url=url, headers=headers, json=payload)
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"request for {url} failed. response data is {response.json()}")
         return None
 
@@ -190,28 +187,30 @@ def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), header
     return trip_ids
 
 
-def _query_assurances(headers: dict = {}):
+def _query_assurances(headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/assuranceservice/assurances/types"
     response = requests.get(url=url, headers=headers)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"query assurance failed, response data is {response.json()}")
         return None
-    data = response.json().get("data")
-    # assurance只有一种
+    response.json().get("data")
 
     return [{"assurance": "1"}]
 
 
-def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "D1345", headers: dict = {}):
-    url = f"{base_address}/api/v1/foodservice/foods/2021-07-14/{place_pair[0]}/{place_pair[1]}/{train_num}"
+def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "D1345",
+                headers: Optional[dict] = None, trip_date: Optional[str] = None):
+    headers = _hdr(headers)
+    day = trip_date if trip_date is not None else _today()
+    url = f"{base_address}/api/v1/foodservice/foods/{day}/{place_pair[0]}/{place_pair[1]}/{train_num}"
 
     response = requests.get(url=url, headers=headers)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"query food failed, response data is {response}")
         return None
-    data = response.json().get("data")
+    response.json().get("data")
 
-    # food 是什么不会对后续调用链有影响，因此查询后返回一个固定数值
     return [{
         "foodName": "Soup",
         "foodPrice": 3.7,
@@ -221,36 +220,23 @@ def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "
     }]
 
 
-def _query_contacts(headers: dict = {}) -> List[str]:
-    """
-    返回座位id列表
-    :param headers:
-    :return: id list
-    """
-    global uuid
+def _query_contacts(headers: Optional[dict] = None) -> Optional[List[str]]:
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/contactservice/contacts/account/{uuid}"
 
     response = requests.get(url=url, headers=headers)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"query contacts failed, response data is {response.json()}")
         return None
 
     data = response.json().get("data")
-    # print("contacts")
-    # pprint(data)
 
     ids = [d.get("id") for d in data if d.get("id") is not None]
-    # pprint(ids)
     return ids
 
 
-def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bool = False) -> List[tuple]:
-    """
-    返回(orderId, tripId) triple list for inside_pay_service
-    :param headers:
-    :return:
-    """
-    url = ""
+def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), query_other: bool = False) -> Optional[List[tuple]]:
+    headers = _hdr(headers)
 
     if query_other:
         url = f"{base_address}/api/v1/orderOtherService/orderOther/refresh"
@@ -262,16 +248,13 @@ def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bo
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"query orders failed, response data is {response.text}")
         return None
 
     data = response.json().get("data")
     pairs = []
     for d in data:
-        # status = 0: not paid
-        # status=1 paid not collect
-        # status=2 collected
         if d.get("status") in types:
             order_id = d.get("id")
             trip_id = d.get("trainNumber")
@@ -281,12 +264,8 @@ def _query_orders(headers: dict = {}, types: tuple = tuple([0]), query_other: bo
     return pairs
 
 
-def _query_orders_all_info(headers: dict = {}, query_other: bool = False) -> List[tuple]:
-    """
-    返回(orderId, tripId) triple list for consign service
-    :param headers:
-    :return:
-    """
+def _query_orders_all_info(headers: Optional[dict] = None, query_other: bool = False) -> Optional[List[tuple]]:
+    headers = _hdr(headers)
 
     if query_other:
         url = f"{base_address}/api/v1/orderOtherService/orderOther/refresh"
@@ -298,7 +277,7 @@ def _query_orders_all_info(headers: dict = {}, query_other: bool = False) -> Lis
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
-    if response.status_code is not 200 or response.json().get("data") is None:
+    if response.status_code != 200 or response.json().get("data") is None:
         logger.warning(f"query orders failed, response data is {response.text}")
         return None
 
@@ -317,7 +296,8 @@ def _query_orders_all_info(headers: dict = {}, query_other: bool = False) -> Lis
     return pairs
 
 
-def _put_consign(result, headers: dict = {}):
+def _put_consign(result, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/consignservice/consigns"
     consignload = {
         "accountId": result["accountId"],
@@ -336,7 +316,7 @@ def _put_consign(result, headers: dict = {}):
                             json=consignload)
 
     order_id = result["orderId"]
-    if response.status_code == 200 | response.status_code == 201:
+    if response.status_code in (200, 201):
         print(f"{order_id} put consign success")
     else:
         print(f"{order_id} failed!")
@@ -345,7 +325,8 @@ def _put_consign(result, headers: dict = {}):
     return order_id
 
 
-def _query_route(routeId: str = '92708982-77af-4318-be25-57ccb0ff69ad', headers: dict = {}):
+def _query_route(routeId: str = '92708982-77af-4318-be25-57ccb0ff69ad', headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/routeservice/routes/{routeId}"
 
     res = requests.get(url=url, headers=headers)
@@ -358,7 +339,8 @@ def _query_route(routeId: str = '92708982-77af-4318-be25-57ccb0ff69ad', headers:
     return
 
 
-def _pay_one_order(order_id, trip_id, headers: dict = {}):
+def _pay_one_order(order_id, trip_id, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/inside_pay_service/inside_payment"
     payload = {
         "orderId": order_id,
@@ -377,8 +359,9 @@ def _pay_one_order(order_id, trip_id, headers: dict = {}):
     return order_id
 
 
-def _cancel_one_order(order_id, uuid, headers: dict = {}):
-    url = f"{base_address}/api/v1/cancelservice/cancel/{order_id}/{uuid}"
+def _cancel_one_order(order_id, uid, headers: Optional[dict] = None):
+    headers = _hdr(headers)
+    url = f"{base_address}/api/v1/cancelservice/cancel/{order_id}/{uid}"
 
     response = requests.get(url=url,
                             headers=headers)
@@ -391,7 +374,8 @@ def _cancel_one_order(order_id, uuid, headers: dict = {}):
     return order_id
 
 
-def _collect_one_order(order_id, headers: dict = {}):
+def _collect_one_order(order_id, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/executeservice/execute/collected/{order_id}"
     response = requests.get(url=url,
                             headers=headers)
@@ -403,7 +387,8 @@ def _collect_one_order(order_id, headers: dict = {}):
     return order_id
 
 
-def _enter_station(order_id, headers: dict = {}):
+def _enter_station(order_id, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/executeservice/execute/execute/{order_id}"
     response = requests.get(url=url,
                             headers=headers)
@@ -415,11 +400,13 @@ def _enter_station(order_id, headers: dict = {}):
     return order_id
 
 
-def _query_cheapest(date="2021-12-31", headers: dict = {}):
+def _query_cheapest(travel_date: Optional[str] = None, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/cheapest"
+    dep = travel_date if travel_date is not None else _today()
 
     payload = {
-        "departureTime": date,
+        "departureTime": dep,
         "endPlace": "Shang Hai",
         "startingPlace": "Nan Jing"
     }
@@ -431,11 +418,13 @@ def _query_cheapest(date="2021-12-31", headers: dict = {}):
         print("query cheapest failed")
 
 
-def _query_min_station(date="2021-12-31", headers: dict = {}):
+def _query_min_station(travel_date: Optional[str] = None, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/minStation"
+    dep = travel_date if travel_date is not None else _today()
 
     payload = {
-        "departureTime": date,
+        "departureTime": dep,
         "endPlace": "Shang Hai",
         "startingPlace": "Nan Jing"
     }
@@ -447,11 +436,13 @@ def _query_min_station(date="2021-12-31", headers: dict = {}):
         print("query min station failed")
 
 
-def _query_quickest(date="2021-12-31", headers: dict = {}):
+def _query_quickest(travel_date: Optional[str] = None, headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/quickest"
+    dep = travel_date if travel_date is not None else _today()
 
     payload = {
-        "departureTime": date,
+        "departureTime": dep,
         "endPlace": "Shang Hai",
         "startingPlace": "Nan Jing"
     }
@@ -463,7 +454,8 @@ def _query_quickest(date="2021-12-31", headers: dict = {}):
         print("query quickest failed")
 
 
-def _query_admin_basic_price(headers: dict = {}):
+def _query_admin_basic_price(headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/adminbasicservice/adminbasic/prices"
     response = requests.get(url=url,
                             headers=headers)
@@ -475,7 +467,8 @@ def _query_admin_basic_price(headers: dict = {}):
         return None
 
 
-def _query_admin_basic_config(headers: dict = {}):
+def _query_admin_basic_config(headers: Optional[dict] = None):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/adminbasicservice/adminbasic/configs"
     response = requests.get(url=url,
                             headers=headers)
@@ -488,6 +481,7 @@ def _query_admin_basic_config(headers: dict = {}):
 
 
 def _rebook_ticket(old_order_id, old_trip_id, new_trip_id, new_date, new_seat_type, headers):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/rebookservice/rebook"
 
     payload = {
@@ -507,10 +501,11 @@ def _rebook_ticket(old_order_id, old_trip_id, new_trip_id, new_date, new_seat_ty
 
 
 def _query_admin_travel(headers):
+    headers = _hdr(headers)
     url = f"{base_address}/api/v1/admintravelservice/admintravel"
 
     r = requests.get(url=url, headers=headers)
-    if r.status_code == 200 and r.json()["status"] == 1:
+    if r.status_code == 200 and r.json().get("status") == 1:
         print("success to query admin travel")
     else:
         print(f"faild to query admin travel with status_code: {r.status_code}")

@@ -3,7 +3,11 @@ import requests
 import logging
 import time
 import random
-from .utils import *
+
+try:
+    from .utils import *
+except ImportError:
+    from utils import *
 
 logger = logging.getLogger("auto-queries")
 datestr = time.strftime("%Y-%m-%d", time.localtime())
