@@ -9,6 +9,18 @@ from utils import normalize_place_pair
 
 logger = logging.getLogger("atomic_queries")
 
+try:
+    from traffic_log import detail_indent, phase_indent, tlog
+except ImportError:
+    def tlog(msg: str, indent: int = 0) -> None:
+        print(f"{'  ' * indent}{msg}")
+
+    def detail_indent() -> int:
+        return 0
+
+    def phase_indent() -> int:
+        return 0
+
 base_address = BASE_URL
 
 # Last successful login userId (single-threaded / default). Multi-threaded flows use _tls_user.
@@ -329,7 +341,10 @@ def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), que
             order_id = d.get("id")
             trip_id = d.get("trainNumber")
             pairs.append((order_id, trip_id))
-    print(f"queried {len(pairs)} orders")
+    tlog(
+        f"orders.refresh n={len(pairs)} types={types} other={query_other}",
+        phase_indent(),
+    )
 
     return pairs
 
@@ -362,7 +377,7 @@ def _query_orders_all_info(headers: Optional[dict] = None, query_other: bool = F
         result["from"] = d.get("from")
         result["to"] = d.get("to")
         pairs.append(result)
-    print(f"queried {len(pairs)} orders")
+    tlog(f"orders.all_info n={len(pairs)} other={query_other}", phase_indent())
 
     return pairs
 
@@ -388,9 +403,9 @@ def _put_consign(result, headers: Optional[dict] = None):
 
     order_id = result["orderId"]
     if response.status_code in (200, 201):
-        print(f"{order_id} put consign success")
+        tlog(f"consign.put ok order_id={order_id}", detail_indent())
     else:
-        print(f"{order_id} failed!")
+        tlog(f"consign.put FAIL order_id={order_id}", detail_indent())
         return None
 
     return order_id
@@ -422,9 +437,9 @@ def _pay_one_order(order_id, trip_id, headers: Optional[dict] = None):
                              json=payload)
 
     if response.status_code == 200:
-        print(f"{order_id} pay success")
+        tlog(f"pay ok order_id={order_id}", detail_indent())
     else:
-        print(f"pay {order_id} failed!")
+        tlog(f"pay FAIL order_id={order_id}", detail_indent())
         return None
 
     return order_id
@@ -438,9 +453,9 @@ def _cancel_one_order(order_id, uid, headers: Optional[dict] = None):
                             headers=headers)
 
     if response.status_code == 200:
-        print(f"{order_id} cancel success")
+        tlog(f"cancel ok order_id={order_id}", detail_indent())
     else:
-        print(f"{order_id} cancel failed")
+        tlog(f"cancel FAIL order_id={order_id}", detail_indent())
 
     return order_id
 
@@ -451,9 +466,9 @@ def _collect_one_order(order_id, headers: Optional[dict] = None):
     response = requests.get(url=url,
                             headers=headers)
     if response.status_code == 200:
-        print(f"{order_id} collect success")
+        tlog(f"collect ok order_id={order_id}", detail_indent())
     else:
-        print(f"{order_id} collect failed")
+        tlog(f"collect FAIL order_id={order_id}", detail_indent())
 
     return order_id
 
@@ -464,9 +479,9 @@ def _enter_station(order_id, headers: Optional[dict] = None):
     response = requests.get(url=url,
                             headers=headers)
     if response.status_code == 200:
-        print(f"{order_id} enter station success")
+        tlog(f"enter_station ok order_id={order_id}", detail_indent())
     else:
-        print(f"{order_id} enter station failed")
+        tlog(f"enter_station FAIL order_id={order_id}", detail_indent())
 
     return order_id
 

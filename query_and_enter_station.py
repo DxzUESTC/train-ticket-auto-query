@@ -18,8 +18,6 @@ def query_and_enter_station(headers):
     if not order_id:
         return
 
-    print(f"{order_id} queried and entered station")
-
 
 if __name__ == '__main__':
     headers = auth_headers()

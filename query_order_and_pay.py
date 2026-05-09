@@ -20,8 +20,6 @@ def query_order_and_pay(headers, pairs):
     if not order_id:
         return
 
-    print(f"{order_id} queried and paid")
-
 
 if __name__ == '__main__':
     headers = auth_headers()

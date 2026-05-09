@@ -26,8 +26,6 @@ def query_one_and_cancel(headers, uuid=None):
     if not order_id:
         return
 
-    print(f"{order_id} queried and canceled")
-
 
 if __name__ == '__main__':
     from atomic_queries import auth_headers

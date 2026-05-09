@@ -19,8 +19,6 @@ def query_and_collect_ticket(headers):
     if not order_id:
         return
 
-    print(f"{order_id} queried and collected")
-
 
 if __name__ == '__main__':
     headers = auth_headers()

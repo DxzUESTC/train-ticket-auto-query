@@ -8,6 +8,15 @@ from seed_od import (
 )
 from utils import random_boolean, random_consignee_phone_cn, random_str, random_form_list
 
+try:
+    from traffic_log import detail_indent, tlog
+except ImportError:
+    def tlog(msg: str, indent: int = 0) -> None:
+        print(f"{'  ' * indent}{msg}")
+
+    def detail_indent() -> int:
+        return 0
+
 import logging
 import random
 import requests
@@ -42,6 +51,10 @@ def query_and_preserve(headers):
             high_speed, dep,
             SEED_HIGH_SPEED_PLACE_PAIRS if high_speed else SEED_NORMAL_PLACE_PAIRS,
         )
+        tlog(
+            f"preserve.skip no_trips high_speed={high_speed} date={dep}",
+            detail_indent(),
+        )
         return
 
     start, end = pair
@@ -60,6 +73,7 @@ def query_and_preserve(headers):
 
     if not contacts_result:
         logger.warning("no contacts for account; skip preserve")
+        tlog("preserve.skip no_contacts", detail_indent())
         return
 
     base_preserve_payload = {
@@ -107,9 +121,14 @@ def query_and_preserve(headers):
         }
         base_preserve_payload.update(consign)
 
-    print("payload:" + str(base_preserve_payload))
-
-    print(f"choices: preserve_high: {high_speed} need_food:{need_food}  need_consign: {need_consign}  need_assurance:{need_assurance}")
+    di = detail_indent()
+    tlog(f"preserve.POST {PRESERVE_URL}", di)
+    tlog(f"preserve.payload {base_preserve_payload}", di)
+    tlog(
+        f"preserve.flags high_speed={high_speed} need_food={need_food} "
+        f"need_consign={need_consign} need_assurance={need_assurance}",
+        di,
+    )
 
     res = requests.post(url=PRESERVE_URL,
                         headers=headers,
@@ -122,6 +141,8 @@ def query_and_preserve(headers):
             PRESERVE_URL,
             (res.text or "")[:800],
         )
+        tlog(f"preserve.FAIL http={res.status_code} url={PRESERVE_URL}", di)
+        tlog(f"preserve.FAIL body {(res.text or '')[:700]!r}", di + 1)
         return
 
     try:
@@ -132,11 +153,13 @@ def query_and_preserve(headers):
             PRESERVE_URL,
             (res.text or "")[:800],
         )
+        tlog("preserve.FAIL non-JSON response", di)
         return
 
-    print(out)
+    tlog(f"preserve.response {out}", di)
     if out.get("data") != "Success":
         logger.warning("preserve not success (common under concurrent load): %s", out)
+        tlog(f"preserve.business_not_success {out!r}", di)
         return
 
 
