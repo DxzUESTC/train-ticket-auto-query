@@ -2,30 +2,29 @@
 Origin–destination pairs aligned with upstream train-ticket seed data.
 
 References (repo train-ticket):
-- ts-travel-service/.../travel/init/InitData.java
-  All G1234–G1237 and D1345: startStationName=shanghai, stationsName=suzhou
-  (first segment for passengers is Shang Hai -> Su Zhou).
-- ts-travel2-service/.../travel2/init/InitData.java
-  Z1234–Z1236, T1235, K1345: startStationName=shanghai, stationsName=nanjing
-  (first segment is Shang Hai -> Nan Jing).
+- ts-travel-service/.../travel/init/InitData.java — G/D trips: route stations like shanghai, suzhou.
+- ts-travel2-service/.../travel2/init/InitData.java — Z/T/K trips: e.g. shanghai, nanjing.
 
-API display names come from ts-station-service InitData (e.g. "Shang Hai", "Su Zhou", "Nan Jing").
-
-There is no Haikou etc. in seed data; do not expect arbitrary city pairs to return trips.
+Use the same strings as Route.stations in ts-route-service / admin Route List (lowercase, no spaces).
+TravelServiceImpl matches startingPlace/endPlace with route.getStations().indexOf(...); display
+names from ts-station-service (e.g. \"Shang Hai\") will NOT match unless normalized — see
+utils.normalize_route_station_name and atomic_queries payload handling.
 """
 
 from typing import Callable, List, Optional, Tuple
 
+from utils import normalize_place_pair
+
 # (startingPlace, endPlace) for POST .../travelservice/trips/left
 SEED_HIGH_SPEED_PLACE_PAIRS: List[Tuple[str, str]] = [
-    ("Shang Hai", "Su Zhou"),
-    ("Su Zhou", "Shang Hai"),
+    ("shanghai", "suzhou"),
+    ("suzhou", "shanghai"),
 ]
 
 # (startingPlace, endPlace) for POST .../travel2service/trips/left
 SEED_NORMAL_PLACE_PAIRS: List[Tuple[str, str]] = [
-    ("Shang Hai", "Nan Jing"),
-    ("Nan Jing", "Shang Hai"),
+    ("shanghai", "nanjing"),
+    ("nanjing", "shanghai"),
 ]
 
 # For travel-plan / exploratory queries (union of both services' typical OD)
@@ -47,7 +46,8 @@ def first_non_empty_trips(
     unpack pair into (start, end) when pair may be None).
     """
     for pair in pairs:
-        trip_ids = query_fn(place_pair=pair, headers=headers, departure_time=departure_time)
+        npair = normalize_place_pair(pair)
+        trip_ids = query_fn(place_pair=npair, headers=headers, departure_time=departure_time)
         if trip_ids:
-            return pair, trip_ids
+            return npair, trip_ids
     return None, None

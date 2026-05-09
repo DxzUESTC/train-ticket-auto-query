@@ -1,6 +1,22 @@
 import random
-from typing import List
+from typing import List, Tuple
 import string
+
+
+def normalize_route_station_name(name: str) -> str:
+    """Align with edu.fudan.common.util.StringUtils.String2Lower (train-ticket ts-common).
+
+    Route.stations use compact lower-case ids (e.g. shanghai, nanjing). Display names
+    from ts-station-service (e.g. \"Shang Hai\") must be normalized before trips/left
+    or preserve from/to, or indexOf on the route list returns -1 and no trips are found.
+    """
+    if name is None or name == "":
+        return name
+    return name.replace(" ", "").lower()
+
+
+def normalize_place_pair(pair: Tuple[str, str]) -> Tuple[str, str]:
+    return (normalize_route_station_name(pair[0]), normalize_route_station_name(pair[1]))
 
 
 def random_boolean() -> bool:

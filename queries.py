@@ -97,6 +97,7 @@ class Query:
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
+        place_pair = normalize_place_pair(place_pair)
 
         if time == "":
             time = datestr
@@ -129,6 +130,7 @@ class Query:
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
+        place_pair = normalize_place_pair(place_pair)
 
         if time == "":
             time = datestr
@@ -168,6 +170,7 @@ class Query:
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
+        place_pair = normalize_place_pair(place_pair)
 
         if time == "":
             time = datestr
@@ -205,6 +208,7 @@ class Query:
 
         if place_pair == ():
             place_pair = random.choice(place_pairs)
+        place_pair = normalize_place_pair(place_pair)
 
         if date == "":
             date = datestr
@@ -243,8 +247,9 @@ class Query:
 
         return [{"assurance": "1"}]
 
-    def query_food(self, place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "D1345", headers: dict = {}):
-        url = f"{self.address}/api/v1/foodservice/foods/{datestr}/{place_pair[0]}/{place_pair[1]}/{train_num}"
+    def query_food(self, place_pair: tuple = ("shanghai", "suzhou"), train_num: str = "D1345", headers: dict = {}):
+        s, e = normalize_place_pair(place_pair)
+        url = f"{self.address}/api/v1/foodservice/foods/{datestr}/{s}/{e}/{train_num}"
 
         response = self.session.get(url=url, headers=headers)
         if response.status_code != 200 or response.json().get("data") is None:
@@ -258,7 +263,7 @@ class Query:
             "foodName": "Soup",
             "foodPrice": 3.7,
             "foodType": 2,
-            "stationName": "Su Zhou",
+            "stationName": "suzhou",
             "storeName": "Roman Holiday"
         }]
 

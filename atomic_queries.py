@@ -4,6 +4,7 @@ import time
 import requests
 
 from config import BASE_URL
+from utils import normalize_place_pair
 
 logger = logging.getLogger("atomic_queries")
 
@@ -107,17 +108,18 @@ def admin_login():
     return _login
 
 
-def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: Optional[dict] = None,
+def _query_high_speed_ticket(place_pair: tuple = ("shanghai", "suzhou"), headers: Optional[dict] = None,
                              departure_time: Optional[str] = None) -> Optional[List[str]]:
     headers = _hdr(headers)
     dep = departure_time if departure_time is not None else _today()
+    start, end = normalize_place_pair(place_pair)
 
     url = f"{base_address}/api/v1/travelservice/trips/left"
 
     payload = {
         "departureTime": dep,
-        "startingPlace": place_pair[0],
-        "endPlace": place_pair[1],
+        "startingPlace": start,
+        "endPlace": end,
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
@@ -135,17 +137,18 @@ def _query_high_speed_ticket(place_pair: tuple = ("Shang Hai", "Su Zhou"), heade
     return trip_ids
 
 
-def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: Optional[dict] = None,
+def _query_normal_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: Optional[dict] = None,
                          departure_time: Optional[str] = None) -> Optional[List[str]]:
     headers = _hdr(headers)
     dep = departure_time if departure_time is not None else _today()
+    start, end = normalize_place_pair(place_pair)
 
     url = f"{base_address}/api/v1/travel2service/trips/left"
 
     payload = {
         "departureTime": dep,
-        "startingPlace": place_pair[0],
-        "endPlace": place_pair[1],
+        "startingPlace": start,
+        "endPlace": end,
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
@@ -162,17 +165,18 @@ def _query_normal_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers:
     return trip_ids
 
 
-def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou"), headers: Optional[dict] = None,
+def _query_high_speed_ticket_parallel(place_pair: tuple = ("shanghai", "suzhou"), headers: Optional[dict] = None,
                                       departure_time: Optional[str] = None) -> Optional[List[str]]:
     headers = _hdr(headers)
     dep = departure_time if departure_time is not None else _today()
+    start, end = normalize_place_pair(place_pair)
 
     url = f"{base_address}/api/v1/travelservice/trips/left_parallel"
 
     payload = {
         "departureTime": dep,
-        "startingPlace": place_pair[0],
-        "endPlace": place_pair[1],
+        "startingPlace": start,
+        "endPlace": end,
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
@@ -190,19 +194,20 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("Shang Hai", "Su Zhou
     return trip_ids
 
 
-def _query_advanced_ticket(place_pair: tuple = ("Nan Jing", "Shang Hai"), headers: Optional[dict] = None,
+def _query_advanced_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: Optional[dict] = None,
                            departure_time: Optional[str] = None,
                            type: str = "cheapest") -> Optional[List[str]]:
     headers = _hdr(headers)
     dep = departure_time if departure_time is not None else _today()
+    start, end = normalize_place_pair(place_pair)
 
     url = f"{base_address}/api/v1/travelplanservice/travelPlan/" + type
     print(url)
 
     payload = {
         "departureTime": dep,
-        "startingPlace": place_pair[0],
-        "endPlace": place_pair[1],
+        "startingPlace": start,
+        "endPlace": end,
     }
 
     response = requests.post(url=url, headers=headers, json=payload)
@@ -232,11 +237,12 @@ def _query_assurances(headers: Optional[dict] = None):
     return [{"assurance": "1"}]
 
 
-def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "D1345",
+def _query_food(place_pair: tuple = ("shanghai", "suzhou"), train_num: str = "D1345",
                 headers: Optional[dict] = None, trip_date: Optional[str] = None):
     headers = _hdr(headers)
     day = trip_date if trip_date is not None else _today()
-    url = f"{base_address}/api/v1/foodservice/foods/{day}/{place_pair[0]}/{place_pair[1]}/{train_num}"
+    start, end = normalize_place_pair(place_pair)
+    url = f"{base_address}/api/v1/foodservice/foods/{day}/{start}/{end}/{train_num}"
 
     response = requests.get(url=url, headers=headers)
     body = _json_body(response)
@@ -249,7 +255,7 @@ def _query_food(place_pair: tuple = ("Shang Hai", "Su Zhou"), train_num: str = "
         "foodName": "Soup",
         "foodPrice": 3.7,
         "foodType": 2,
-        "stationName": "Su Zhou",
+        "stationName": "suzhou",
         "storeName": "Roman Holiday"
     }]
 
@@ -443,8 +449,8 @@ def _query_cheapest(travel_date: Optional[str] = None, headers: Optional[dict] =
 
     payload = {
         "departureTime": dep,
-        "endPlace": "Shang Hai",
-        "startingPlace": "Nan Jing"
+        "endPlace": "shanghai",
+        "startingPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)
@@ -461,8 +467,8 @@ def _query_min_station(travel_date: Optional[str] = None, headers: Optional[dict
 
     payload = {
         "departureTime": dep,
-        "endPlace": "Shang Hai",
-        "startingPlace": "Nan Jing"
+        "endPlace": "shanghai",
+        "startingPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)
@@ -479,8 +485,8 @@ def _query_quickest(travel_date: Optional[str] = None, headers: Optional[dict] =
 
     payload = {
         "departureTime": dep,
-        "endPlace": "Shang Hai",
-        "startingPlace": "Nan Jing"
+        "endPlace": "shanghai",
+        "startingPlace": "nanjing",
     }
 
     r = requests.post(url=url, json=payload, headers=headers)

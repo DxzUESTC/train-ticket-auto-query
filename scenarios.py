@@ -74,13 +74,13 @@ def query_and_preserve(q: Query):
 
     high_speed = random_from_weighted(highspeed_weights)
     if high_speed:
-        start = "Shang Hai"
-        end = "Su Zhou"
+        start = "shanghai"
+        end = "suzhou"
         high_speed_place_pair = (start, end)
         trip_ids = q.query_high_speed_ticket(place_pair=high_speed_place_pair)
     else:
-        start = "Shang Hai"
-        end = "Nan Jing"
+        start = "shanghai"
+        end = "nanjing"
         other_place_pair = (start, end)
         trip_ids = q.query_normal_ticket(place_pair=other_place_pair)
 
