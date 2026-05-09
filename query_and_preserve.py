@@ -110,9 +110,29 @@ def query_and_preserve(headers):
                         headers=headers,
                         json=base_preserve_payload)
 
-    print(res.json())
-    if res.json().get("data") != "Success":
-        raise Exception(str(res.json()) + " not success")
+    if res.status_code != 200:
+        logger.warning(
+            "preserve HTTP %s url=%s text=%s",
+            res.status_code,
+            PRESERVE_URL,
+            (res.text or "")[:800],
+        )
+        return
+
+    try:
+        out = res.json()
+    except ValueError:
+        logger.warning(
+            "preserve non-JSON url=%s raw=%s",
+            PRESERVE_URL,
+            (res.text or "")[:800],
+        )
+        return
+
+    print(out)
+    if out.get("data") != "Success":
+        logger.warning("preserve not success (common under concurrent load): %s", out)
+        return
 
 
 if __name__ == '__main__':

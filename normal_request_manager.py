@@ -1,3 +1,5 @@
+import os
+
 from query_and_preserve import query_and_preserve
 from query_order_and_pay import query_order_and_pay
 from query_and_collect_ticket import query_and_collect_ticket
@@ -12,6 +14,9 @@ from utils import random_boolean
 import time
 
 from threading import Thread
+
+# Same account + preserve is heavy; many threads often see HTTP 500 from gateway/services.
+LOAD_THREADS = max(1, int(os.environ.get("LOAD_THREADS", "5")))
 
 
 def main():
@@ -52,8 +57,9 @@ def main_thread():
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(f"start:{start_time}")
     print(f"departure date (TRAIN_TICKET_DATE / config): {DEPARTURE_DATE}")
+    print(f"LOAD_THREADS={LOAD_THREADS} (export LOAD_THREADS=1 to reduce preserve 500s)")
 
-    for i in range(5):
+    for i in range(LOAD_THREADS):
         t = Thread(name="thread" + str(i), target=main)
         time.sleep(1)
         t.start()

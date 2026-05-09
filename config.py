@@ -9,6 +9,8 @@ backend; use 'today' or an explicit future YYYY-MM-DD.
 Environment variables:
   TRAIN_TICKET_BASE   Gateway root URL (default: lab NodePort below).
   TRAIN_TICKET_DATE   YYYY-MM-DD, or 'today' / 'tomorrow' (default: today).
+  LOAD_THREADS        Worker threads in normal_request_manager.main_thread (default: 5).
+                        Use 1 if you see concurrent preserve HTTP 500 from the gateway.
 """
 
 import os
