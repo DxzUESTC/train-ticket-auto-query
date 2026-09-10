@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import random
@@ -58,6 +59,22 @@ def load_loadtest_accounts():
 
 def _get_headers_store():
     return defaultdict(lambda: {"Content-Type": "application/json"})
+
+
+def _register_stats_dump() -> None:
+    """进程退出（含 Ctrl-C）时兜底写出统计 JSON，避免中断丢数据。"""
+    path = os.environ.get("TRAFFIC_STATS_JSON")
+    if not path:
+        return
+
+    def _dump() -> None:
+        STATS.finish()
+        try:
+            STATS.dump_json(path)
+        except Exception:
+            pass
+
+    atexit.register(_dump)
 
 
 def _fetch_unpaid_pairs(headers):
@@ -174,6 +191,7 @@ def run_one_traffic_iteration(
 def main_thread():
     accounts = load_loadtest_accounts()
     n_acc = len(accounts)
+    _register_stats_dump()
 
     start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     print(
