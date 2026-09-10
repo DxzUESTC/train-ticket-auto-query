@@ -50,9 +50,11 @@ chmod +x run.sh          # 首次使用
 ```
 
 - 产物在 `runs/`：`<时间戳>-<模式>-stats.json` 与同名 `.log`。
+- 按时长跑（适合每天固定实验窗口）：`./run.sh baseline 1800` 表示跑 30 分钟，到点自动停止并输出汇总；也可用 `BASE_DURATION=1800 ./run.sh baseline`。时长模式下忽略轮数。
 - `warmup` 结束会校验统计中 `exception`/`http_fail`，非零则中止；`all` 模式不会继续正式跑。
 - 预热会覆盖 preserve/preserveOther/pay/collect/enter/cancel 等分支（随机 20 轮，约 1-3 分钟）。
 - 跨午夜会因 travel 服务 `afterToday` 校验导致查票全空，长跑请避开 0 点或跨天后重启进程。
+- 托运默认开启（约一半订票随机携带托运，覆盖 consign/consign-price 两个服务）；`TRAFFIC_ENABLE_CONSIGN=0 ./run.sh baseline` 可关闭。
 - 常用覆盖变量：`WARM_ITERS`、`WARM_TIMEOUT`、`BASE_THREADS`、`BASE_ITERS`、`BASE_TIMEOUT`、`TRAFFIC_ENABLE_CONSIGN`、`TRAIN_TICKET_BASE`。
 - 统计 JSON 在进程退出（含 Ctrl-C）时也会兜底落盘，中断不丢数据。
 

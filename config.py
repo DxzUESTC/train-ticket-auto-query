@@ -13,12 +13,14 @@ Environment variables:
                         Use 1 if you see concurrent preserve HTTP 500 from the gateway.
   TRAFFIC_INNER_ITERATIONS  Total business iterations (preserve + orders path) to run
                         across the pool (default: LOAD_THREADS * 30).
+  TRAFFIC_DURATION_SECONDS  If > 0, run for that many seconds instead of a fixed
+                        iteration count (duration overrides TRAFFIC_INNER_ITERATIONS).
   TRAIN_TICKET_ACCOUNTS_FILE  JSON list of {username, password, userId?}; default
                         uestc_loadtest_accounts.json beside this package. Run
                         register_uestc_loadtest_accounts.py then seed_contacts_uestc_loadtest.py.
   TRAFFIC_HTTP_TIMEOUT  Per-request connect/read timeout seconds (default: 10). Any
                         request exceeding it raises and is counted as exception.
-  TRAFFIC_ENABLE_CONSIGN  Enable random consign on preserve (default: off).
+  TRAFFIC_ENABLE_CONSIGN  Enable random consign on preserve (default: on; set 0 to disable).
   TRAFFIC_STATS_JSON  Optional path; normal_request_manager writes the step summary JSON.
 """
 

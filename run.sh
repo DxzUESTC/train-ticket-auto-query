@@ -10,24 +10,28 @@ mkdir -p "$RUNS_DIR"
 TS="$(date +%Y%m%d-%H%M%S)"
 
 export TRAIN_TICKET_BASE="${TRAIN_TICKET_BASE:-http://192.168.100.11:30467}"
-export TRAFFIC_ENABLE_CONSIGN="${TRAFFIC_ENABLE_CONSIGN:-0}"
+export TRAFFIC_ENABLE_CONSIGN="${TRAFFIC_ENABLE_CONSIGN:-1}"
 WARM_ITERS="${WARM_ITERS:-20}"
 WARM_TIMEOUT="${WARM_TIMEOUT:-120}"
 BASE_THREADS="${BASE_THREADS:-5}"
 BASE_ITERS="${BASE_ITERS:-1200}"
 BASE_TIMEOUT="${BASE_TIMEOUT:-15}"
+DURATION="${2:-${BASE_DURATION:-0}}"
 
 usage() {
   cat <<'EOF'
-用法: ./run.sh <smoke|warmup|baseline|all>
-  smoke     1 线程 3 轮，超时 120s（连通性/接线检查）
-  warmup    1 线程 20 轮，超时 120s（冷启动预热，结束后校验无 exception/http_fail）
-  baseline  5 线程 1200 轮，超时 15s（正式基线）
-  all       warmup 通过后自动执行 baseline
+用法: ./run.sh <smoke|warmup|baseline|all> [时长秒数]
+  smoke             1 线程 3 轮，超时 120s（连通性/接线检查）
+  warmup            1 线程 20 轮，超时 120s（冷启动预热，结束后校验无 exception/http_fail）
+  baseline [秒]     正式基线：5 线程，默认 1200 轮；给时长则按时长跑（如 ./run.sh baseline 1800）
+  all [秒]          warmup 通过后自动执行 baseline（时长同上）
+
+按时长跑时忽略轮数，到点自动停止并输出汇总。也可用环境变量 BASE_DURATION 指定秒数。
+托运默认开启（覆盖 ts-consign-service / ts-consign-price-service），TRAFFIC_ENABLE_CONSIGN=0 可关闭。
 
 可覆盖环境变量:
-  WARM_ITERS WARM_TIMEOUT BASE_THREADS BASE_ITERS BASE_TIMEOUT
-  TRAIN_TICKET_BASE TRAFFIC_ENABLE_CONSIGN TRAFFIC_HTTP_TIMEOUT
+  WARM_ITERS WARM_TIMEOUT BASE_THREADS BASE_ITERS BASE_TIMEOUT BASE_DURATION
+  TRAIN_TICKET_BASE TRAFFIC_ENABLE_CONSIGN
 EOF
 }
 
@@ -37,14 +41,19 @@ check_python() {
 }
 
 run_case() {
-  local name="$1" threads="$2" iters="$3" timeout="$4"
+  local name="$1" threads="$2" iters="$3" timeout="$4" duration="${5:-0}"
   local stats="$RUNS_DIR/$TS-$name-stats.json"
   local log="$RUNS_DIR/$TS-$name.log"
-  echo ">>> $name: LOAD_THREADS=$threads ITER=$iters TIMEOUT=${timeout}s"
+  if [ "$duration" -gt 0 ] 2>/dev/null; then
+    echo ">>> $name: LOAD_THREADS=$threads DURATION=${duration}s TIMEOUT=${timeout}s"
+  else
+    echo ">>> $name: LOAD_THREADS=$threads ITER=$iters TIMEOUT=${timeout}s"
+  fi
   echo ">>> stats=$stats"
   echo ">>> log=$log"
   LOAD_THREADS="$threads" \
   TRAFFIC_INNER_ITERATIONS="$iters" \
+  TRAFFIC_DURATION_SECONDS="$duration" \
   TRAFFIC_HTTP_TIMEOUT="$timeout" \
   TRAFFIC_STATS_JSON="$stats" \
   python3 normal_request_manager.py 2>&1 | tee "$log"
@@ -83,24 +92,24 @@ warn_midnight() {
 case "$MODE" in
   smoke)
     check_python
-    run_case smoke 1 3 "$WARM_TIMEOUT"
+    run_case smoke 1 3 "$WARM_TIMEOUT" 0
     ;;
   warmup)
     check_python
-    run_case warmup 1 "$WARM_ITERS" "$WARM_TIMEOUT"
+    run_case warmup 1 "$WARM_ITERS" "$WARM_TIMEOUT" 0
     check_warmup "$RUNS_DIR/$TS-warmup-stats.json"
     ;;
   baseline)
     check_python
     warn_midnight
-    run_case baseline "$BASE_THREADS" "$BASE_ITERS" "$BASE_TIMEOUT"
+    run_case baseline "$BASE_THREADS" "$BASE_ITERS" "$BASE_TIMEOUT" "$DURATION"
     ;;
   all)
     check_python
     warn_midnight
-    run_case warmup 1 "$WARM_ITERS" "$WARM_TIMEOUT"
+    run_case warmup 1 "$WARM_ITERS" "$WARM_TIMEOUT" 0
     check_warmup "$RUNS_DIR/$TS-warmup-stats.json"
-    run_case baseline "$BASE_THREADS" "$BASE_ITERS" "$BASE_TIMEOUT"
+    run_case baseline "$BASE_THREADS" "$BASE_ITERS" "$BASE_TIMEOUT" "$DURATION"
     ;;
   *)
     usage

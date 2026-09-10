@@ -38,6 +38,8 @@ LOAD_THREADS = max(1, int(os.environ.get("LOAD_THREADS", "5")))
 # 累计执行多少次「一轮 preserve + 订单后续」（默认与旧版「LOAD_THREADS 条线程 × 30 次」相当）
 _TRAFFIC_DEFAULT_INNER = str(LOAD_THREADS * 30)
 TRAFFIC_INNER_ITERATIONS = max(1, int(os.environ.get("TRAFFIC_INNER_ITERATIONS", _TRAFFIC_DEFAULT_INNER)))
+# 按运行时长停止（秒）；>0 时忽略 TRAFFIC_INNER_ITERATIONS
+TRAFFIC_DURATION_SECONDS = max(0, int(float(os.environ.get("TRAFFIC_DURATION_SECONDS", "0"))))
 
 
 def load_loadtest_accounts():
@@ -203,6 +205,11 @@ def main_thread():
                 f"LOAD_THREADS={LOAD_THREADS} TRAFFIC_INNER_ITERATIONS={TRAFFIC_INNER_ITERATIONS} accounts={n_acc}",
                 f"accounts file: {os.environ.get('TRAIN_TICKET_ACCOUNTS_FILE', _DEFAULT_ACCOUNTS_FILE)}",
                 f"consign={os.environ.get('TRAFFIC_ENABLE_CONSIGN', '0')} http_timeout={HTTP_TIMEOUT}s",
+                (
+                    f"duration={TRAFFIC_DURATION_SECONDS}s（>0 时忽略轮数，到点自动停止）"
+                    if TRAFFIC_DURATION_SECONDS > 0
+                    else "duration=0（按轮数运行）"
+                ),
                 "log format: [W<槽位> tid=<OS线程号> user=<账号> idx=<该账号第几次迭代>]",
                 "并发: 全局最多 LOAD_THREADS 条线程；同 username 互斥串行；"
                 "每轮迭代后 sleep 0~5s；启动各工作线程前 sleep 0~5s。",
@@ -214,6 +221,7 @@ def main_thread():
     sem = Semaphore(LOAD_THREADS)
     inner_lock = Lock()
     inner_done = {"n": 0}
+    deadline_holder = {"at": None}
     acc_locks = {a["username"]: Lock() for a in accounts}
     acc_iter = defaultdict(int)
     rr = {"i": 0}
@@ -230,10 +238,15 @@ def main_thread():
         def pool_worker():
             threading.current_thread().name = f"traffic-W{worker_id}"
             while True:
-                with inner_lock:
-                    if inner_done["n"] >= TRAFFIC_INNER_ITERATIONS:
+                if TRAFFIC_DURATION_SECONDS > 0:
+                    dl = deadline_holder["at"]
+                    if dl is not None and time.monotonic() >= dl:
                         return
-                    inner_done["n"] += 1
+                else:
+                    with inner_lock:
+                        if inner_done["n"] >= TRAFFIC_INNER_ITERATIONS:
+                            return
+                        inner_done["n"] += 1
 
                 acc = pick_account()
                 un = acc["username"]
@@ -262,6 +275,9 @@ def main_thread():
         t = Thread(target=make_pool_worker(wi), daemon=False)
         t.start()
         threads.append(t)
+
+    if TRAFFIC_DURATION_SECONDS > 0:
+        deadline_holder["at"] = time.monotonic() + TRAFFIC_DURATION_SECONDS
 
     for t in threads:
         t.join()

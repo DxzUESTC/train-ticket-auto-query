@@ -144,7 +144,7 @@ def query_and_preserve(headers):
     seat_type = random_form_list([2, 3])
     base_preserve_payload["seatType"] = seat_type
 
-    need_consign = env_truthy("TRAFFIC_ENABLE_CONSIGN", False) and random_boolean()
+    need_consign = env_truthy("TRAFFIC_ENABLE_CONSIGN", True) and random_boolean()
     result["consign_requested"] = need_consign
     if need_consign:
         consign = {
