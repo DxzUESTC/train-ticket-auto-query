@@ -16,6 +16,10 @@ Environment variables:
   TRAIN_TICKET_ACCOUNTS_FILE  JSON list of {username, password, userId?}; default
                         uestc_loadtest_accounts.json beside this package. Run
                         register_uestc_loadtest_accounts.py then seed_contacts_uestc_loadtest.py.
+  TRAFFIC_HTTP_TIMEOUT  Per-request connect/read timeout seconds (default: 10). Any
+                        request exceeding it raises and is counted as exception.
+  TRAFFIC_ENABLE_CONSIGN  Enable random consign on preserve (default: off).
+  TRAFFIC_STATS_JSON  Optional path; normal_request_manager writes the step summary JSON.
 """
 
 import os
@@ -26,6 +30,8 @@ BASE_URL = os.environ.get(
     "TRAIN_TICKET_BASE",
     "http://192.168.100.11:30467",
 ).rstrip("/")
+
+HTTP_TIMEOUT = float(os.environ.get("TRAFFIC_HTTP_TIMEOUT", "10"))
 
 _raw_date = os.environ.get("TRAIN_TICKET_DATE", "today").strip()
 _lower = _raw_date.lower()

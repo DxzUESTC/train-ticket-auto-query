@@ -4,21 +4,30 @@ import random
 import sys
 import threading
 import time
+import traceback
 from collections import defaultdict
 from threading import Lock, Semaphore, Thread
 
 from query_and_preserve import query_and_preserve
-from query_order_and_pay import query_order_and_pay
 from query_and_collect_ticket import query_and_collect_ticket
 from query_and_enter_station import query_and_enter_station
 from query_and_cancel import query_one_and_cancel
 
-from atomic_queries import _login, _query_orders, _query_high_speed_ticket, bind_thread_user
+from atomic_queries import (
+    _login,
+    _query_orders,
+    _query_high_speed_ticket,
+    _pay_one_order,
+    _collect_one_order,
+    _enter_station,
+    bind_thread_user,
+)
 from traffic_log import clear_traffic_context, set_traffic_context, tlog
-from config import DEPARTURE_DATE
+from traffic_stats import STATS
+from config import DEPARTURE_DATE, HTTP_TIMEOUT
 from seed_od import SEED_HIGH_SPEED_PLACE_PAIRS, first_non_empty_trips
 
-from utils import random_boolean
+from utils import random_boolean, random_form_list
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_ACCOUNTS_FILE = os.path.join(_DIR, "uestc_loadtest_accounts.json")
@@ -51,10 +60,21 @@ def _get_headers_store():
     return defaultdict(lambda: {"Content-Type": "application/json"})
 
 
+def _fetch_unpaid_pairs(headers):
+    """查询未支付订单池（普通 + 普铁/其他）。
+
+    返回 (pairs, ok)：ok=False 表示至少一侧查询失败，不能用于新单 diff。
+    """
+    normal = _query_orders(headers=headers, types=tuple([0]))
+    other = _query_orders(headers=headers, types=tuple([0]), query_other=True)
+    ok = normal is not None and other is not None
+    return (normal or []) + (other or []), ok
+
+
 def run_one_traffic_iteration(
     account: dict, headers: dict, per_account_idx: int, worker_id: int = 0
 ) -> None:
-    """单次业务：刷新登录（每 20 次）、订票、付/取/进站或取消。"""
+    """单次业务：刷新登录（每 20 次）、订票，然后在同一张新订单上完成 支付→取票→进站（或取消）。"""
     un = account["username"]
     pw = account["password"]
 
@@ -85,28 +105,66 @@ def run_one_traffic_iteration(
 
         bind_thread_user(uid_tls)
 
-        tlog("step preserve", 1)
-        query_and_preserve(headers)
+        tlog("step snapshot unpaid pool", 1)
+        before_pairs, before_ok = _fetch_unpaid_pairs(headers)
+        tlog(f"unpaid pool before={len(before_pairs)} ok={before_ok}", 1)
 
-        tlog("step refresh unpaid orders", 1)
-        pairs = _query_orders(headers=headers, types=tuple([0, 1]))
-        pairs2 = _query_orders(headers=headers, types=tuple([0, 1]), query_other=True)
-        unpaid = (pairs or []) + (pairs2 or [])
-        tlog(
-            f"unpaid pool size={len(unpaid)}（pay/cancel 只随机抽其中 1 条；"
-            f"若上一步 preserve 为 500 则无新单，pay 的往往是更早留下的未支付单）",
-            1,
-        )
+        tlog("step preserve", 1)
+        res = query_and_preserve(headers)
+        if res.get("error"):
+            tlog(f"preserve.ERROR {res['error']}", 1)
+            return
+
+        target_pairs = []
+        if res.get("order_created"):
+            after_pairs, after_ok = _fetch_unpaid_pairs(headers)
+            if before_ok and after_ok:
+                before_ids = {p[0] for p in before_pairs}
+                target_pairs = [p for p in after_pairs if p[0] not in before_ids]
+                if len(target_pairs) > 1:
+                    tlog(f"new-order diff got {len(target_pairs)} candidates, pick one", 1)
+            if not target_pairs:
+                tlog("new-order diff unavailable, fallback to unpaid pool", 1)
+                target_pairs = after_pairs or before_pairs
+        else:
+            tlog("preserve did not create order, fallback to unpaid pool", 1)
+            after_pairs, _ = _fetch_unpaid_pairs(headers)
+            target_pairs = after_pairs or before_pairs
+
+        target = random_form_list(target_pairs) if target_pairs else None
+        if target:
+            tlog(f"chain target order_id={target[0]} trip_id={target[1]}", 1)
 
         if random_boolean() and random_boolean():
             tlog("branch cancel random", 1)
-            query_one_and_cancel(headers)
+            query_one_and_cancel(headers, pairs=([target] if target else None))
+            STATS.record("chain", "skip", detail="cancel_branch")
         else:
             tlog("branch pay → collect → enter_station", 1)
-            if unpaid:
-                query_order_and_pay(headers, unpaid)
-            query_and_collect_ticket(headers)
-            query_and_enter_station(headers)
+            paid_id = None
+            if target:
+                paid_id = _pay_one_order(target[0], target[1], headers=headers)
+            if paid_id:
+                collected_id = _collect_one_order(order_id=paid_id, headers=headers)
+                if collected_id:
+                    entered_id = _enter_station(order_id=collected_id, headers=headers)
+                    if entered_id:
+                        STATS.record("chain", "success", detail=f"order_id={paid_id}")
+                    else:
+                        STATS.record("chain", "partial", detail=f"enter_station_fail order_id={paid_id}")
+                        query_and_enter_station(headers)
+                else:
+                    STATS.record("chain", "partial", detail=f"collect_fail order_id={paid_id}")
+                    query_and_collect_ticket(headers)
+                    query_and_enter_station(headers)
+            else:
+                STATS.record(
+                    "chain",
+                    "business_fail" if target else "skip",
+                    detail="pay_fail" if target else "no_target",
+                )
+                query_and_collect_ticket(headers)
+                query_and_enter_station(headers)
 
         tlog("══ iteration end", 1)
     finally:
@@ -126,6 +184,7 @@ def main_thread():
                 f"departure date: {DEPARTURE_DATE}",
                 f"LOAD_THREADS={LOAD_THREADS} TRAFFIC_INNER_ITERATIONS={TRAFFIC_INNER_ITERATIONS} accounts={n_acc}",
                 f"accounts file: {os.environ.get('TRAIN_TICKET_ACCOUNTS_FILE', _DEFAULT_ACCOUNTS_FILE)}",
+                f"consign={os.environ.get('TRAFFIC_ENABLE_CONSIGN', '0')} http_timeout={HTTP_TIMEOUT}s",
                 "log format: [W<槽位> tid=<OS线程号> user=<账号> idx=<该账号第几次迭代>]",
                 "并发: 全局最多 LOAD_THREADS 条线程；同 username 互斥串行；"
                 "每轮迭代后 sleep 0~5s；启动各工作线程前 sleep 0~5s。",
@@ -168,6 +227,10 @@ def main_thread():
                         acc_iter[un] = i + 1
                         hdr = headers_store[un]
                         run_one_traffic_iteration(acc, hdr, i, worker_id)
+                    except Exception as e:
+                        STATS.record("iteration", "exception", detail=f"{type(e).__name__}: {e}")
+                        tlog(f"iteration EXCEPTION {type(e).__name__}: {e}", 1)
+                        traceback.print_exc()
                     finally:
                         sem.release()
 
@@ -186,7 +249,13 @@ def main_thread():
         t.join()
 
     end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    STATS.finish()
     print(f"\n========== traffic finished start={start_time} end={end_time} ==========\n")
+    print(STATS.render_summary())
+    stats_path = os.environ.get("TRAFFIC_STATS_JSON")
+    if stats_path:
+        STATS.dump_json(stats_path)
+        print(f"stats json: {stats_path}")
 
 
 def query_order():

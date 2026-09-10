@@ -4,7 +4,8 @@ import threading
 import time
 import requests
 
-from config import BASE_URL
+from config import BASE_URL, HTTP_TIMEOUT
+from traffic_stats import STATS
 from utils import normalize_place_pair
 
 logger = logging.getLogger("atomic_queries")
@@ -63,6 +64,56 @@ def _json_body(response: requests.Response):
         return None
 
 
+def _ms_since(t0: float) -> float:
+    return (time.perf_counter() - t0) * 1000.0
+
+
+def request_with_timeout(step: str, method: str, url: str, **kwargs):
+    """带超时的 HTTP 请求；异常记入统计后原样抛出。返回 (response, latency_ms)。"""
+    kwargs.setdefault("timeout", HTTP_TIMEOUT)
+    t0 = time.perf_counter()
+    try:
+        response = requests.request(method=method, url=url, **kwargs)
+    except Exception as e:
+        STATS.record(step, "exception", _ms_since(t0), detail=f"{type(e).__name__}: {e}")
+        raise
+    return response, _ms_since(t0)
+
+
+def _business(resp, ok_prefixes=None):
+    """解析 TT 业务响应：HTTP 200 且 body.status==1（可选 msg 前缀）。
+
+    返回 (outcome, msg, body)，outcome in success/business_fail/http_fail。
+    """
+    body = _json_body(resp)
+    if resp.status_code != 200:
+        return "http_fail", f"http_{resp.status_code}", body
+    if not isinstance(body, dict):
+        return "http_fail", "non_json_body", body
+    status = body.get("status")
+    msg = str(body.get("msg") or "")
+    if status != 1:
+        return "business_fail", msg or f"status_{status}", body
+    if ok_prefixes and not any(msg.startswith(p) for p in ok_prefixes):
+        return "business_fail", msg, body
+    return "success", msg, body
+
+
+def _extract_trip_ids(data) -> List[str]:
+    """防御性提取 tripId：字段缺失或形状变化时跳过，而不是抛 AttributeError。"""
+    trip_ids = []
+    for d in _iter_records(data):
+        tid = d.get("tripId")
+        if not isinstance(tid, dict):
+            continue
+        trip_type = tid.get("type")
+        trip_number = tid.get("number")
+        if trip_type is None or trip_number is None:
+            continue
+        trip_ids.append(f"{trip_type}{trip_number}")
+    return trip_ids
+
+
 def _unwrap_api_data(body):
     """
     Gateway may return {\"data\": ...} or, for some routes, a raw JSON array at top level.
@@ -111,31 +162,40 @@ def _login(username="fdse_microservice", password="111111"):
     verify_url = f"{base}/api/v1/verifycode/generate"
     login_url = f"{base}/api/v1/users/login"
 
-    session.get(url=verify_url, verify=False)
+    t0 = time.perf_counter()
+    try:
+        session.get(url=verify_url, verify=False, timeout=HTTP_TIMEOUT)
 
-    headers = {
-        'Origin': login_url,
-        'Referer': f"{base}/client_login.html",
-    }
+        headers = {
+            'Origin': login_url,
+            'Referer': f"{base}/client_login.html",
+        }
 
-    data = '{"username":"' + username + '","password":"' + password + '","verificationCode":"1234"}'
+        data = '{"username":"' + username + '","password":"' + password + '","verificationCode":"1234"}'
 
-    r = session.post(url=login_url, headers=headers, data=data, verify=False)
+        r = session.post(url=login_url, headers=headers, data=data, verify=False, timeout=HTTP_TIMEOUT)
+    except Exception as e:
+        STATS.record("login", "exception", _ms_since(t0), detail=f"{type(e).__name__}: {e}")
+        return None, None
 
     if r.status_code == 200:
         body = _json_body(r)
         if not isinstance(body, dict):
+            STATS.record("login", "http_fail", _ms_since(t0), detail="non_json_body")
             return None, None
         inner = body.get("data")
         if not inner or not isinstance(inner, dict):
+            STATS.record("login", "business_fail", _ms_since(t0), detail=str(body.get("msg") or "")[:300])
             return None, None
         uid = inner.get("userId")
         token = inner.get("token")
         if uid:
             uuid = uid
             _tls_user.user_id = uid
+        STATS.record("login", "success" if (uid and token) else "business_fail", _ms_since(t0))
         return uid, token
 
+    STATS.record("login", "http_fail", _ms_since(t0), detail=f"http_{r.status_code}")
     return None, None
 
 
@@ -157,7 +217,7 @@ def _query_high_speed_ticket(place_pair: tuple = ("shanghai", "suzhou"), headers
         "endPlace": end,
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, _ = request_with_timeout("trips_hs", "POST", url, headers=headers, json=payload)
 
     body = _json_body(response)
     data = _unwrap_api_data(body)
@@ -165,11 +225,7 @@ def _query_high_speed_ticket(place_pair: tuple = ("shanghai", "suzhou"), headers
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    trip_ids = []
-    for d in _iter_records(data):
-        trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
-        trip_ids.append(trip_id)
-    return trip_ids
+    return _extract_trip_ids(data)
 
 
 def _query_normal_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: Optional[dict] = None,
@@ -186,18 +242,14 @@ def _query_normal_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: O
         "endPlace": end,
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, _ = request_with_timeout("trips_normal", "POST", url, headers=headers, json=payload)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
         logger.warning(f"request for {url} failed. response data is {body}")
         return None
 
-    trip_ids = []
-    for d in _iter_records(data):
-        trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
-        trip_ids.append(trip_id)
-    return trip_ids
+    return _extract_trip_ids(data)
 
 
 def _query_high_speed_ticket_parallel(place_pair: tuple = ("shanghai", "suzhou"), headers: Optional[dict] = None,
@@ -214,7 +266,7 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("shanghai", "suzhou")
         "endPlace": end,
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, _ = request_with_timeout("trips_hs_parallel", "POST", url, headers=headers, json=payload)
 
     body = _json_body(response)
     data = _unwrap_api_data(body)
@@ -222,11 +274,7 @@ def _query_high_speed_ticket_parallel(place_pair: tuple = ("shanghai", "suzhou")
         logger.warning(f"request for {url} failed. response data is {response.text}")
         return None
 
-    trip_ids = []
-    for d in _iter_records(data):
-        trip_id = d.get("tripId").get("type") + d.get("tripId").get("number")
-        trip_ids.append(trip_id)
-    return trip_ids
+    return _extract_trip_ids(data)
 
 
 def _query_advanced_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers: Optional[dict] = None,
@@ -245,7 +293,7 @@ def _query_advanced_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers:
         "endPlace": end,
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, _ = request_with_timeout("trips_advanced", "POST", url, headers=headers, json=payload)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
@@ -262,7 +310,7 @@ def _query_advanced_ticket(place_pair: tuple = ("shanghai", "nanjing"), headers:
 def _query_assurances(headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/assuranceservice/assurances/types"
-    response = requests.get(url=url, headers=headers)
+    response, _ = request_with_timeout("assurances", "GET", url, headers=headers)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
@@ -279,7 +327,7 @@ def _query_food(place_pair: tuple = ("shanghai", "suzhou"), train_num: str = "D1
     start, end = normalize_place_pair(place_pair)
     url = f"{base_address}/api/v1/foodservice/foods/{day}/{start}/{end}/{train_num}"
 
-    response = requests.get(url=url, headers=headers)
+    response, _ = request_with_timeout("food_query", "GET", url, headers=headers)
     body = _json_body(response)
     if response.status_code != 200 or not isinstance(body, dict):
         logger.warning(f"query food failed, response data is {response.text}")
@@ -305,7 +353,7 @@ def _query_contacts(headers: Optional[dict] = None) -> Optional[List[str]]:
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/contactservice/contacts/account/{current_user_id()}"
 
-    response = requests.get(url=url, headers=headers)
+    response, _ = request_with_timeout("contacts", "GET", url, headers=headers)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
@@ -328,10 +376,16 @@ def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), que
         "loginId": current_user_id(),
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, ms = request_with_timeout("orders_refresh", "POST", url, headers=headers, json=payload)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
+        STATS.record(
+            "orders_refresh",
+            "http_fail" if response.status_code != 200 else "business_fail",
+            ms,
+            detail=f"http_{response.status_code}",
+        )
         logger.warning(f"query orders failed, response data is {response.text}")
         return None
 
@@ -341,6 +395,7 @@ def _query_orders(headers: Optional[dict] = None, types: tuple = tuple([0]), que
             order_id = d.get("id")
             trip_id = d.get("trainNumber")
             pairs.append((order_id, trip_id))
+    STATS.record("orders_refresh", "success", ms)
     tlog(
         f"orders.refresh n={len(pairs)} types={types} other={query_other}",
         phase_indent(),
@@ -361,7 +416,7 @@ def _query_orders_all_info(headers: Optional[dict] = None, query_other: bool = F
         "loginId": current_user_id(),
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response, _ = request_with_timeout("orders_all_info", "POST", url, headers=headers, json=payload)
     body = _json_body(response)
     data = _unwrap_api_data(body)
     if response.status_code != 200 or data is None:
@@ -398,16 +453,16 @@ def _put_consign(result, headers: Optional[dict] = None):
         "id": "",
         "isWithin": False
     }
-    response = requests.put(url=url, headers=headers,
-                            json=consignload)
+    response, ms = request_with_timeout("consign_put", "PUT", url, headers=headers, json=consignload)
 
     order_id = result["orderId"]
-    if response.status_code in (200, 201):
-        tlog(f"consign.put ok order_id={order_id}", detail_indent())
-    else:
-        tlog(f"consign.put FAIL order_id={order_id}", detail_indent())
+    outcome, msg, _ = _business(response, ok_prefixes=("You have consigned successfully",))
+    STATS.record("consign_put", outcome, ms, detail=f"order_id={order_id} msg={msg}")
+    if outcome != "success":
+        tlog(f"consign.put FAIL order_id={order_id} msg={msg}", detail_indent())
         return None
 
+    tlog(f"consign.put ok order_id={order_id} msg={msg}", detail_indent())
     return order_id
 
 
@@ -415,7 +470,7 @@ def _query_route(routeId: str = '92708982-77af-4318-be25-57ccb0ff69ad', headers:
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/routeservice/routes/{routeId}"
 
-    res = requests.get(url=url, headers=headers)
+    res, _ = request_with_timeout("route_query", "GET", url, headers=headers)
 
     if res.status_code == 200:
         print(f"query {routeId} success")
@@ -433,15 +488,15 @@ def _pay_one_order(order_id, trip_id, headers: Optional[dict] = None):
         "tripId": trip_id
     }
 
-    response = requests.post(url=url, headers=headers,
-                             json=payload)
+    response, ms = request_with_timeout("pay", "POST", url, headers=headers, json=payload)
 
-    if response.status_code == 200:
-        tlog(f"pay ok order_id={order_id}", detail_indent())
-    else:
-        tlog(f"pay FAIL order_id={order_id}", detail_indent())
+    outcome, msg, _ = _business(response, ok_prefixes=("Payment Success",))
+    STATS.record("pay", outcome, ms, detail=f"order_id={order_id} msg={msg}")
+    if outcome != "success":
+        tlog(f"pay FAIL order_id={order_id} msg={msg}", detail_indent())
         return None
 
+    tlog(f"pay ok order_id={order_id} msg={msg}", detail_indent())
     return order_id
 
 
@@ -449,40 +504,43 @@ def _cancel_one_order(order_id, uid, headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/cancelservice/cancel/{order_id}/{uid}"
 
-    response = requests.get(url=url,
-                            headers=headers)
+    response, ms = request_with_timeout("cancel", "GET", url, headers=headers)
 
-    if response.status_code == 200:
-        tlog(f"cancel ok order_id={order_id}", detail_indent())
-    else:
-        tlog(f"cancel FAIL order_id={order_id}", detail_indent())
+    outcome, msg, _ = _business(response, ok_prefixes=("Success",))
+    STATS.record("cancel", outcome, ms, detail=f"order_id={order_id} msg={msg}")
+    if outcome != "success":
+        tlog(f"cancel FAIL order_id={order_id} msg={msg}", detail_indent())
+        return None
 
+    tlog(f"cancel ok order_id={order_id} msg={msg}", detail_indent())
     return order_id
 
 
 def _collect_one_order(order_id, headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/executeservice/execute/collected/{order_id}"
-    response = requests.get(url=url,
-                            headers=headers)
-    if response.status_code == 200:
-        tlog(f"collect ok order_id={order_id}", detail_indent())
-    else:
-        tlog(f"collect FAIL order_id={order_id}", detail_indent())
+    response, ms = request_with_timeout("collect", "GET", url, headers=headers)
+    outcome, msg, _ = _business(response, ok_prefixes=("Success",))
+    STATS.record("collect", outcome, ms, detail=f"order_id={order_id} msg={msg}")
+    if outcome != "success":
+        tlog(f"collect FAIL order_id={order_id} msg={msg}", detail_indent())
+        return None
 
+    tlog(f"collect ok order_id={order_id} msg={msg}", detail_indent())
     return order_id
 
 
 def _enter_station(order_id, headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/executeservice/execute/execute/{order_id}"
-    response = requests.get(url=url,
-                            headers=headers)
-    if response.status_code == 200:
-        tlog(f"enter_station ok order_id={order_id}", detail_indent())
-    else:
-        tlog(f"enter_station FAIL order_id={order_id}", detail_indent())
+    response, ms = request_with_timeout("enter_station", "GET", url, headers=headers)
+    outcome, msg, _ = _business(response, ok_prefixes=("Success",))
+    STATS.record("enter_station", outcome, ms, detail=f"order_id={order_id} msg={msg}")
+    if outcome != "success":
+        tlog(f"enter_station FAIL order_id={order_id} msg={msg}", detail_indent())
+        return None
 
+    tlog(f"enter_station ok order_id={order_id} msg={msg}", detail_indent())
     return order_id
 
 
@@ -497,7 +555,7 @@ def _query_cheapest(travel_date: Optional[str] = None, headers: Optional[dict] =
         "startPlace": "nanjing",
     }
 
-    r = requests.post(url=url, json=payload, headers=headers)
+    r, _ = request_with_timeout("travel_plan_cheapest", "POST", url, json=payload, headers=headers)
     if r.status_code == 200:
         print("query cheapest success")
     else:
@@ -515,7 +573,7 @@ def _query_min_station(travel_date: Optional[str] = None, headers: Optional[dict
         "startPlace": "nanjing",
     }
 
-    r = requests.post(url=url, json=payload, headers=headers)
+    r, _ = request_with_timeout("travel_plan_min_station", "POST", url, json=payload, headers=headers)
     if r.status_code == 200:
         print("query min station success")
     else:
@@ -533,7 +591,7 @@ def _query_quickest(travel_date: Optional[str] = None, headers: Optional[dict] =
         "startPlace": "nanjing",
     }
 
-    r = requests.post(url=url, json=payload, headers=headers)
+    r, _ = request_with_timeout("travel_plan_quickest", "POST", url, json=payload, headers=headers)
     if r.status_code == 200:
         print("query quickest success")
     else:
@@ -543,8 +601,7 @@ def _query_quickest(travel_date: Optional[str] = None, headers: Optional[dict] =
 def _query_admin_basic_price(headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/adminbasicservice/adminbasic/prices"
-    response = requests.get(url=url,
-                            headers=headers)
+    response, _ = request_with_timeout("admin_basic_price", "GET", url, headers=headers)
     if response.status_code == 200:
         print(f"price success")
         return response
@@ -556,8 +613,7 @@ def _query_admin_basic_price(headers: Optional[dict] = None):
 def _query_admin_basic_config(headers: Optional[dict] = None):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/adminbasicservice/adminbasic/configs"
-    response = requests.get(url=url,
-                            headers=headers)
+    response, _ = request_with_timeout("admin_basic_config", "GET", url, headers=headers)
     if response.status_code == 200:
         print(f"config success")
         return response
@@ -578,7 +634,7 @@ def _rebook_ticket(old_order_id, old_trip_id, new_trip_id, new_date, new_seat_ty
         "seatType": new_seat_type
     }
     print(payload)
-    r = requests.post(url=url, json=payload, headers=headers)
+    r, _ = request_with_timeout("rebook", "POST", url, json=payload, headers=headers)
     if r.status_code == 200:
         print(r.text)
     else:
@@ -590,7 +646,7 @@ def _query_admin_travel(headers):
     headers = _hdr(headers)
     url = f"{base_address}/api/v1/admintravelservice/admintravel"
 
-    r = requests.get(url=url, headers=headers)
+    r, _ = request_with_timeout("admin_travel", "GET", url, headers=headers)
     body = _json_body(r)
     if r.status_code == 200 and isinstance(body, dict) and body.get("status") == 1:
         print("success to query admin travel")

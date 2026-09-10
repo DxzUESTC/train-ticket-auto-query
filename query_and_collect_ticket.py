@@ -16,10 +16,9 @@ def query_and_collect_ticket(headers):
     pairs = _query_orders(headers=headers, types=tuple([1]))
     pairs2 = _query_orders(headers=headers, types=tuple([1]), query_other=True)
 
-    if not pairs and not pairs2:
+    pairs = (pairs or []) + (pairs2 or [])
+    if not pairs:
         return
-
-    pairs = pairs + pairs2
 
     # (orderId, tripId)
     pair = random_form_list(pairs)

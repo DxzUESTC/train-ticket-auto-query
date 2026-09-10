@@ -12,20 +12,22 @@ except ImportError:
         return 0
 
 
-def query_one_and_cancel(headers, uuid=None):
+def query_one_and_cancel(headers, uuid=None, pairs=None):
     """
     查询order并取消order
     :param uuid:
     :param headers:
+    :param pairs: 可选的 (orderId, tripId) 列表；传入时直接在该列表中随机选一单取消
     :return:
     """
-    pairs = _query_orders(headers=headers, types=tuple([0, 1]))
-    pairs2 = _query_orders(headers=headers, types=tuple([0, 1]), query_other=True)
+    if pairs is None:
+        pairs = _query_orders(headers=headers, types=tuple([0, 1]))
+        pairs2 = _query_orders(headers=headers, types=tuple([0, 1]), query_other=True)
 
-    if not pairs and not pairs2:
+        pairs = (pairs or []) + (pairs2 or [])
+
+    if not pairs:
         return
-
-    pairs = pairs + pairs2
 
     # (orderId, tripId) pair
     pair = random_form_list(pairs)

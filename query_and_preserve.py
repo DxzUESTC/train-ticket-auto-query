@@ -1,11 +1,19 @@
 import atomic_queries as aq
-from atomic_queries import _query_high_speed_ticket, _query_normal_ticket, _query_assurances, _query_food, _query_contacts
+from atomic_queries import (
+    _query_high_speed_ticket,
+    _query_normal_ticket,
+    _query_assurances,
+    _query_food,
+    _query_contacts,
+    request_with_timeout,
+)
 from config import BASE_URL, DEPARTURE_DATE
 from seed_od import (
     SEED_HIGH_SPEED_PLACE_PAIRS,
     SEED_NORMAL_PLACE_PAIRS,
     first_non_empty_trips,
 )
+from traffic_stats import STATS
 from utils import (
     env_truthy,
     random_boolean,
@@ -25,7 +33,6 @@ except ImportError:
 
 import logging
 import random
-import requests
 import time
 
 logger = logging.getLogger("query_and_preserve")
@@ -37,10 +44,26 @@ def query_and_preserve(headers):
     2. 查保险、Food、Contacts
     3. 随机选择Contacts、保险、是否买食物；托运默认关闭（TRAFFIC_ENABLE_CONSIGN=1 时随机开启）
     4. 买票
-    :return:
+
+    返回结构化结果，供流量统计与新单闭环使用：
+    attempted/skip_reason/http_status/status/msg/order_created/consign_requested/consign_ok/error
     """
+    result = {
+        "high_speed": None,
+        "attempted": False,
+        "skip_reason": None,
+        "http_status": None,
+        "status": None,
+        "msg": "",
+        "order_created": False,
+        "consign_requested": False,
+        "consign_ok": None,
+        "error": None,
+    }
+
     dep = DEPARTURE_DATE
     high_speed = random_boolean()
+    result["high_speed"] = high_speed
 
     if high_speed:
         pair, trip_ids = first_non_empty_trips(
@@ -61,7 +84,9 @@ def query_and_preserve(headers):
             f"preserve.skip no_trips high_speed={high_speed} date={dep}",
             detail_indent(),
         )
-        return
+        result["skip_reason"] = "no_trips"
+        STATS.record("preserve", "skip", detail="no_trips")
+        return result
 
     start, end = pair
     _ = _query_assurances(headers=headers)
@@ -80,7 +105,9 @@ def query_and_preserve(headers):
     if not contacts_result:
         logger.warning("no contacts for account; skip preserve")
         tlog("preserve.skip no_contacts", detail_indent())
-        return
+        result["skip_reason"] = "no_contacts"
+        STATS.record("preserve", "skip", detail="no_contacts")
+        return result
 
     base_preserve_payload = {
         "accountId": aq.current_user_id(),
@@ -118,6 +145,7 @@ def query_and_preserve(headers):
     base_preserve_payload["seatType"] = seat_type
 
     need_consign = env_truthy("TRAFFIC_ENABLE_CONSIGN", False) and random_boolean()
+    result["consign_requested"] = need_consign
     if need_consign:
         consign = {
             "consigneeName": random_str(),
@@ -136,9 +164,17 @@ def query_and_preserve(headers):
         di,
     )
 
-    res = requests.post(url=PRESERVE_URL,
-                        headers=headers,
-                        json=base_preserve_payload)
+    try:
+        res, ms = request_with_timeout(
+            "preserve", "POST", PRESERVE_URL, headers=headers, json=base_preserve_payload
+        )
+    except Exception as e:
+        result["error"] = f"{type(e).__name__}: {e}"
+        tlog(f"preserve.EXCEPTION {result['error']}", di)
+        return result
+
+    result["attempted"] = True
+    result["http_status"] = res.status_code
 
     if res.status_code != 200:
         logger.debug(
@@ -149,7 +185,8 @@ def query_and_preserve(headers):
         )
         tlog(f"preserve.FAIL http={res.status_code} url={PRESERVE_URL}", di)
         tlog(f"preserve.FAIL body {(res.text or '')[:700]!r}", di + 1)
-        return
+        STATS.record("preserve", "http_fail", ms, detail=f"http_{res.status_code}")
+        return result
 
     try:
         out = res.json()
@@ -160,13 +197,36 @@ def query_and_preserve(headers):
             (res.text or "")[:800],
         )
         tlog("preserve.FAIL non-JSON response", di)
-        return
+        STATS.record("preserve", "http_fail", ms, detail="non_json_body")
+        return result
 
     tlog(f"preserve.response {out}", di)
-    if out.get("data") != "Success":
+    result["status"] = out.get("status")
+    result["msg"] = str(out.get("msg") or "")
+    result["order_created"] = result["status"] == 1
+
+    if result["order_created"]:
+        outcome = "success" if result["msg"] == "Success." else "partial"
+    else:
+        outcome = "business_fail"
+    STATS.record("preserve", outcome, ms, detail=result["msg"])
+
+    if need_consign and result["order_created"]:
+        # 托运失败时 preserve 会把 msg 覆盖为 "Consign Fail."；其他 msg 均视为托运已成功
+        consign_ok = result["msg"] != "Consign Fail."
+        result["consign_ok"] = consign_ok
+        STATS.record(
+            "consign_hs" if high_speed else "consign_normal",
+            "success" if consign_ok else "business_fail",
+            ms,
+            detail=result["msg"],
+        )
+
+    if not result["order_created"]:
         logger.debug("preserve not success (common under concurrent load): %s", out)
         tlog(f"preserve.business_not_success {out!r}", di)
-        return
+
+    return result
 
 
 if __name__ == '__main__':
