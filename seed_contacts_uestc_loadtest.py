@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-为 uestc_loadtest_accounts.json 中每个账号登录后创建一条默认联系人（幂等：已存在则跳过）。
+为账号清单中的每个账号登录后创建一条默认联系人（幂等：已存在则跳过）。
 
 依赖：已执行 register_uestc_loadtest_accounts.py（或账号可登录），网关 TRAIN_TICKET_BASE 与 config 一致。
+账号清单默认取 uestc_loadtest_accounts.json，可用 TRAIN_TICKET_ACCOUNTS_FILE 覆盖
+（与 register_uestc_loadtest_accounts.py --out、normal_request_manager 保持一致）。
 
 接口：POST {BASE}/api/v1/contactservice/contacts
 权限：需该用户 JWT（ROLE_USER），见 ts-contacts-service SecurityConfig。
 
 用法:
-  python seed_contacts_uestc_loadtest.py
+  py -3.14 seed_contacts_uestc_loadtest.py
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import requests
 
@@ -27,7 +29,10 @@ if _DIR not in sys.path:
 from atomic_queries import _login  # noqa: E402
 from config import BASE_URL  # noqa: E402
 
-ACCOUNTS_FILE = os.path.join(_DIR, "uestc_loadtest_accounts.json")
+ACCOUNTS_FILE = os.environ.get(
+    "TRAIN_TICKET_ACCOUNTS_FILE",
+    os.path.join(_DIR, "uestc_loadtest_accounts.json"),
+)
 
 
 def _load_accounts() -> List[Dict[str, Any]]:

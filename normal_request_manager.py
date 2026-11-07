@@ -47,7 +47,7 @@ def load_loadtest_accounts():
     path = os.environ.get("TRAIN_TICKET_ACCOUNTS_FILE", _DEFAULT_ACCOUNTS_FILE)
     if not os.path.isfile(path):
         raise FileNotFoundError(
-            f"未找到账号文件: {path}\n请先执行: python register_uestc_loadtest_accounts.py"
+            f"未找到账号文件: {path}\n请先执行: py -3.14 register_uestc_loadtest_accounts.py"
         )
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)

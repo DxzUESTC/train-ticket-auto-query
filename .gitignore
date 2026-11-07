@@ -131,3 +131,7 @@ dmypy.json
 # Traffic experiment artifacts
 runs/
 .idea/
+
+# 批量建号的本地账号清单（含本集群 UUID，不入库）
+uestc_loadtest_accounts.local.json
+*.json.tmp

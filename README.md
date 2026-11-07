@@ -8,6 +8,7 @@ Train Ticket Auto Query Python Scripts
 |----------|---------|
 | `TRAIN_TICKET_BASE` | Gateway root URL (default `http://192.168.100.11:30467`) |
 | `TRAIN_TICKET_DATE` | `today`, `tomorrow`, or `YYYY-MM-DD` (default `today`; must satisfy backend `afterToday` in travel services) |
+| `TRAIN_TICKET_ACCOUNTS_FILE` | Account list JSON used by `normal_request_manager` / `locustfile` / `seed_contacts`; default `uestc_loadtest_accounts.json` |
 
 ## Seed routes (aligned with upstream `train-ticket`)
 
@@ -36,6 +37,37 @@ query_and_preserve(q)
 # or execute query directly
 q.query_high_speed_ticket()
 ```
+
+## 压测账号准备（批量建号）
+
+压测账号由脚本走网关的注册接口批量创建（不是直接写数据库），推荐顺序：
+
+```bash
+py -3.14 register_uestc_loadtest_accounts.py   # 1. 建号并写出 uestc_loadtest_accounts.json
+py -3.14 seed_contacts_uestc_loadtest.py       # 2. 每个账号建一条默认联系人（幂等，preserve 必需）
+./run.sh smoke                                 # 3. 接线检查，之后即可 warmup/baseline
+```
+
+`register_uestc_loadtest_accounts.py` 主要参数：
+
+| 参数 | 默认 | 含义 |
+|------|------|------|
+| `--count` / `--start` | 10 / 1 | 账号数量与编号起点 |
+| `--prefix` / `--password` | `uestc-test` / `111111` | 用户名前缀、统一密码 |
+| `--out` | `uestc_loadtest_accounts.json` | 输出文件（缺省读 `TRAIN_TICKET_ACCOUNTS_FILE`） |
+| `--base` | `TRAIN_TICKET_BASE` | 网关地址 |
+| `--timeout` / `--retries` / `--backoff` | 60s / 3 / 2s | 单请求超时、最大尝试次数、退避基数 |
+| `--dry-run` / `--skip-preflight` | - | 只打印计划 / 跳过网关可达性探测 |
+
+行为约定：
+
+- **幂等**：已存在的账号不会被修改，脚本改用登录回填 `userId`，可反复执行。
+- **增量落盘**：每个账号成功即原子覆写输出文件（临时文件 + 替换），Ctrl-C 或个别失败不丢已完成部分。
+- **重试**：只对传输错误和 5xx 做指数退避重试；4xx、密码错误等确定性失败立即返回，不拖慢。
+- **退出码**：`0` 全部成功；`1` 有账号未解析（其余已落盘）；`2` 参数错误；`3` 网关不可达；`130` 被中断。
+- 默认输出会覆盖仓库里的模板文件；不想产生 diff 可加 `--out uestc_loadtest_accounts.local.json`（已 gitignore）。
+- 需要实验室内网可达（默认 `http://192.168.100.11:30467`）；连不上时脚本直接以退出码 3 失败，不会逐个账号空等超时。
+- Windows 下用 `py -3.14` 运行（系统 `python` 3.11 未安装 `requests`）。
 
 ## 流量实验流程（预热 + 正式）
 
